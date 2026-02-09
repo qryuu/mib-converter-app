@@ -25,6 +25,7 @@ Resources:
       Architectures: [x86_64]
       Environment:
         Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap        
           bucket_name: !Ref MibBucket
           NEW_RELIC_ACCOUNT_ID: !Ref NewRelicAccountId
           NEW_RELIC_LICENSE_KEY: !Ref NewRelicLicenseKey
