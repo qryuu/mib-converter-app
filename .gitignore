@@ -1,0 +1,25 @@
+# .gitignore
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Virtual Environment
+venv/
+env/
+.env
+
+# AWS & Secrets (絶対にアップロードしない！)
+aws_credentials
+secrets.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# VS Code specific (DevContainer設定以外は除外する場合)
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
