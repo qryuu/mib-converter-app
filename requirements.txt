@@ -1,4 +1,5 @@
 flask
+flask-cors
 pysmi
 pyyaml
 boto3
