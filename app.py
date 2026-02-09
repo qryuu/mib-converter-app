@@ -43,11 +43,9 @@ class CustomJsonWriter:
             self._suffix = kwargs['suffix']
         return self
 
-    # 古いバージョンのpysmi用
     def saveData(self, mibName, data, **kwargs):
         return self._write_json(mibName, data)
 
-    # 新しいバージョンのpysmi用 (今回のエラー対応)
     def put_data(self, mibName, data, **kwargs):
         return self._write_json(mibName, data)
 
@@ -55,7 +53,13 @@ class CustomJsonWriter:
         file_path = os.path.join(self._path, mibName + self._suffix)
         try:
             with open(file_path, 'w') as f:
-                json.dump(data, f, indent=4)
+                # ▼▼▼ 修正箇所: データ型に応じた書き込み ▼▼▼
+                if isinstance(data, str):
+                    # 既に文字列ならそのまま書き込む (ただしJSONとして有効か確認したほうが安全だが一旦そのまま)
+                    f.write(data)
+                else:
+                    # 辞書型などならJSON化して書き込む
+                    json.dump(data, f, indent=4)
             print(f"DEBUG: Saved JSON to {file_path}", file=sys.stderr)
         except Exception as e:
             print(f"DEBUG: Failed to save JSON {file_path}: {e}", file=sys.stderr)
@@ -95,12 +99,10 @@ def parse_mib_to_json(mib_path, output_dir):
         mibCompiler.compile(assumed_mib_name)
 
         # ▼▼▼ 生成されたファイルを賢く探す ▼▼▼
-        # 1. ファイル名と同じ名前のJSONがあるか？
         expected_json = os.path.join(output_dir, assumed_mib_name + '.json')
         if os.path.exists(expected_json):
             return expected_json, assumed_mib_name
         
-        # 2. なければ、フォルダ内にある最新のJSONを探す
         json_files = [f for f in os.listdir(output_dir) if f.endswith('.json')]
         
         target_json = None
@@ -129,33 +131,47 @@ def parse_mib_to_json(mib_path, output_dir):
         return None, None
 
 def extract_oid_info(json_path):
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-    
-    metrics = []
-    traps = []
+    try:
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+        
+        # もしロードしたデータが文字列なら、二重エンコードされている可能性があるため再度ロード
+        if isinstance(data, str):
+            data = json.loads(data)
+            
+        metrics = []
+        traps = []
 
-    for symbol, info in sorted(data.items()):
-        if isinstance(info, dict) and 'oid' in info:
-            nodetype = info.get('nodetype', '')
-            description = info.get('description', '')
+        # データが辞書型であることを確認
+        if not isinstance(data, dict):
+            print(f"Error: JSON content is not a dictionary. It is {type(data)}", file=sys.stderr)
+            return [], []
 
-            if nodetype in ['scalar', 'column']:
-                metrics.append({
-                    'name': symbol,
-                    'oid': info['oid'],
-                    'nodetype': nodetype,
-                    'description': description
-                })
-            elif nodetype in ['notification', 'trap']:
-                traps.append({
-                    'name': symbol,
-                    'oid': info['oid'],
-                    'nodetype': nodetype,
-                    'description': description
-                })
+        for symbol, info in sorted(data.items()):
+            if isinstance(info, dict) and 'oid' in info:
+                nodetype = info.get('nodetype', '')
+                description = info.get('description', '')
 
-    return metrics, traps
+                if nodetype in ['scalar', 'column']:
+                    metrics.append({
+                        'name': symbol,
+                        'oid': info['oid'],
+                        'nodetype': nodetype,
+                        'description': description
+                    })
+                elif nodetype in ['notification', 'trap']:
+                    traps.append({
+                        'name': symbol,
+                        'oid': info['oid'],
+                        'nodetype': nodetype,
+                        'description': description
+                    })
+
+        return metrics, traps
+    except Exception as e:
+        print(f"Extract OID Error: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return [], []
 
 def get_ai_descriptions(symbol_list, lang='ja'):
     if not symbol_list: return {}
