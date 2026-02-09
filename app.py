@@ -6,7 +6,7 @@ import boto3
 import traceback
 import sys
 import shutil
-# ▼▼▼ 追加: New Relic Agent ▼▼▼
+# ▼▼▼ 追加 1: New Relic Agent ▼▼▼
 import newrelic.agent
 
 from flask import Flask, request, jsonify, send_file
@@ -327,16 +327,14 @@ def download_file(filename):
 # Lambda Handler (New Relic 強制送信対応版)
 # ---------------------------------------------------------
 
-# 元のWSGIハンドラーを作成
+# ▼▼▼ 修正箇所: Lambda Handler で New Relic を強制送信 ▼▼▼
 wsgi_handler = make_lambda_handler(app)
 
 def lambda_handler(event, context):
     try:
-        # WSGIアプリを実行してレスポンスを取得
         return wsgi_handler(event, context)
     finally:
-        # ▼▼▼ 追加: 処理終了時に強制的にデータを Extension に送信する ▼▼▼
-        # これにより、Lambdaが凍結する前にデータ送信を完了させます
+        # 強制的にデータを送る
         print("Force sending New Relic data...", file=sys.stderr)
         try:
             newrelic.agent.shutdown_agent(timeout=2.0)
