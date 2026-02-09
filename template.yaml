@@ -24,7 +24,7 @@ Resources:
       Runtime: python3.12
       Timeout: 180
       # ▼ Late Payload (送信遅れ) を防ぐため 1024MB に増強
-      MemorySize: 1024
+      MemorySize: 2048
       Architectures: [x86_64]
       
       # ▼ New Relic Layer (Tokyo Region Python 3.12)
@@ -46,6 +46,7 @@ Resources:
           
           # ▼ ログ転送とデバッグ設定 (動作確認のため一時的に debug にします)
           NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
+          NEW_RELIC_EXTENSION_SEND_EXTENSION_LOGS: "true"
           NEW_RELIC_EXTENSION_LOG_LEVEL: "DEBUG"
           NEW_RELIC_LOG_LEVEL: "debug"
           
@@ -54,6 +55,7 @@ Resources:
           NEW_RELIC_AIM_ENABLED: "true"
           NEW_RELIC_CUSTOM_ATTRIBUTES_ENABLED: "true"
           NEW_RELIC_AIM_DATA_DROPPING_DISABLED: "true"
+          NEW_RELIC_LAMBDA_EXTENSION_ENABLED: "true"
 
           # ▼ APM (分散トレーシング) 設定
           NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
