@@ -13,7 +13,6 @@ from apig_wsgi import make_lambda_handler
 # pysmi 関連
 from pysmi.reader import FileReader, HttpReader
 from pysmi.searcher import StubSearcher
-# FileWriterの代わりに自作クラスを使うため、Writer系のimportは削除しても良いですが残しておきます
 from pysmi.parser import SmiStarParser
 from pysmi.codegen import JsonCodeGen
 from pysmi.compiler import MibCompiler
@@ -37,14 +36,23 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 class CustomJsonWriter:
     def __init__(self, path):
         self._path = path
+        self._suffix = '.json'
     
     def setOptions(self, **kwargs):
-        # 互換性のためのダミーメソッド
+        if 'suffix' in kwargs:
+            self._suffix = kwargs['suffix']
         return self
 
+    # 古いバージョンのpysmi用
     def saveData(self, mibName, data, **kwargs):
-        # JsonCodeGenから渡されたデータ(dict)をJSONファイルとして保存
-        file_path = os.path.join(self._path, mibName + '.json')
+        return self._write_json(mibName, data)
+
+    # 新しいバージョンのpysmi用 (今回のエラー対応)
+    def put_data(self, mibName, data, **kwargs):
+        return self._write_json(mibName, data)
+
+    def _write_json(self, mibName, data):
+        file_path = os.path.join(self._path, mibName + self._suffix)
         try:
             with open(file_path, 'w') as f:
                 json.dump(data, f, indent=4)
@@ -69,7 +77,7 @@ def parse_mib_to_json(mib_path, output_dir):
         # パーサーの設定
         mibParser = SmiStarParser()
         
-        # ▼▼▼ 修正: 自作のJSONライターを使用 ▼▼▼
+        # 自作のJSONライターを使用
         mibWriter = CustomJsonWriter(output_dir)
         
         mibCompiler = MibCompiler(mibParser, JsonCodeGen(), mibWriter)
