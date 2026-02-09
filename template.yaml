@@ -21,14 +21,14 @@ Resources:
       CodeUri: .
       # ▼ New Relic のラッパーをハンドラーに指定 (重要)
       Handler: newrelic_lambda_wrapper.handler
-      Runtime: python3.9
+      Runtime: python3.12
       Timeout: 180
       MemorySize: 512
       Architectures: [x86_64]
       
       # ▼ New Relic Layer (Tokyo Region Python 3.9)
       Layers:
-        - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython39:163
+        - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython312:58
 
       Environment:
         Variables:
