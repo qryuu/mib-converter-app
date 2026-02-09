@@ -6,6 +6,9 @@ import boto3
 import traceback
 import sys
 import shutil
+# ▼▼▼ 追加: New Relic Agent ▼▼▼
+import newrelic.agent
+
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from apig_wsgi import make_lambda_handler
@@ -53,12 +56,9 @@ class CustomJsonWriter:
         file_path = os.path.join(self._path, mibName + self._suffix)
         try:
             with open(file_path, 'w') as f:
-                # ▼▼▼ 修正箇所: データ型に応じた書き込み ▼▼▼
                 if isinstance(data, str):
-                    # 既に文字列ならそのまま書き込む (ただしJSONとして有効か確認したほうが安全だが一旦そのまま)
                     f.write(data)
                 else:
-                    # 辞書型などならJSON化して書き込む
                     json.dump(data, f, indent=4)
             print(f"DEBUG: Saved JSON to {file_path}", file=sys.stderr)
         except Exception as e:
@@ -67,8 +67,9 @@ class CustomJsonWriter:
         return mibName
 
 # ---------------------------------------------------------
-# ロジック関数
+# ロジック関数 (変更なし)
 # ---------------------------------------------------------
+# (省略: parse_mib_to_json, extract_oid_info, get_ai_descriptions, generate_profile_yaml はそのまま)
 
 def parse_mib_to_json(mib_path, output_dir):
     try:
@@ -98,7 +99,7 @@ def parse_mib_to_json(mib_path, output_dir):
         # コンパイル実行
         mibCompiler.compile(assumed_mib_name)
 
-        # ▼▼▼ 生成されたファイルを賢く探す ▼▼▼
+        # 生成されたファイルを賢く探す
         expected_json = os.path.join(output_dir, assumed_mib_name + '.json')
         if os.path.exists(expected_json):
             return expected_json, assumed_mib_name
@@ -135,16 +136,13 @@ def extract_oid_info(json_path):
         with open(json_path, 'r') as f:
             data = json.load(f)
         
-        # もしロードしたデータが文字列なら、二重エンコードされている可能性があるため再度ロード
         if isinstance(data, str):
             data = json.loads(data)
             
         metrics = []
         traps = []
 
-        # データが辞書型であることを確認
         if not isinstance(data, dict):
-            print(f"Error: JSON content is not a dictionary. It is {type(data)}", file=sys.stderr)
             return [], []
 
         for symbol, info in sorted(data.items()):
@@ -326,9 +324,24 @@ def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
 # ---------------------------------------------------------
-# Lambda Handler
+# Lambda Handler (New Relic 強制送信対応版)
 # ---------------------------------------------------------
-lambda_handler = make_lambda_handler(app)
+
+# 元のWSGIハンドラーを作成
+wsgi_handler = make_lambda_handler(app)
+
+def lambda_handler(event, context):
+    try:
+        # WSGIアプリを実行してレスポンスを取得
+        return wsgi_handler(event, context)
+    finally:
+        # ▼▼▼ 追加: 処理終了時に強制的にデータを Extension に送信する ▼▼▼
+        # これにより、Lambdaが凍結する前にデータ送信を完了させます
+        print("Force sending New Relic data...", file=sys.stderr)
+        try:
+            newrelic.agent.shutdown_agent(timeout=2.0)
+        except Exception as nr_e:
+            print(f"New Relic shutdown error: {nr_e}", file=sys.stderr)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
