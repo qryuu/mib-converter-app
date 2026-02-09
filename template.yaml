@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: MIB Converter App
+
+Parameters:
+  NewRelicAccountId:
+    Type: String
+  NewRelicLicenseKey:
+    Type: String
+
+Resources:
+  # S3 Bucket for MIB files
+  MibBucket:
+    Type: AWS::S3::Bucket
+
+  # Lambda Function
+  FlaskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: run.sh
+      Runtime: python3.9
+      Timeout: 30
+      MemorySize: 512
+      Architectures: [x86_64]
+      Environment:
+        Variables:
+          bucket_name: !Ref MibBucket
+          NEW_RELIC_ACCOUNT_ID: !Ref NewRelicAccountId
+          NEW_RELIC_APP_NAME: "MIB-Converter-Lambda"
+          NEW_RELIC_LAMBDA_HANDLER: "app.app"
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/newrelic_lambda_wrapper.handler
+      Layers:
+        # AWS Lambda Web Adapter
+        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:17
+        # New Relic Layer (Tokyo Region)
+        - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython39:39
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref MibBucket
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        HttpApi:
+          Type: HttpApi
+
+Outputs:
+  ApiUrl:
+    Description: "API Endpoint"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"

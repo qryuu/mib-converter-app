@@ -1,0 +1,5 @@
+flask
+pysmi
+pyyaml
+boto3
+newrelic
