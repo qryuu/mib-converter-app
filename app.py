@@ -4,16 +4,18 @@ import yaml
 import time
 import boto3
 import traceback
+import sys
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from apig_wsgi import make_lambda_handler
 
-from pysmi.reader import FileReader
+# pysmi 関連
+from pysmi.reader import FileReader, HttpReader
 from pysmi.searcher import StubSearcher
 from pysmi.writer import PyFileWriter
 from pysmi.parser import SmiStarParser
 from pysmi.codegen import JsonCodeGen
 from pysmi.compiler import MibCompiler
-from apig_wsgi import make_lambda_handler
 
 app = Flask(__name__)
 CORS(app)
@@ -21,6 +23,11 @@ CORS(app)
 # Lambda環境設定
 UPLOAD_FOLDER = '/tmp/uploads'
 OUTPUT_FOLDER = '/tmp/outputs'
+
+# 毎回クリーンにする（前回の残骸が邪魔しないように）
+import shutil
+if os.path.exists(UPLOAD_FOLDER): shutil.rmtree(UPLOAD_FOLDER)
+if os.path.exists(OUTPUT_FOLDER): shutil.rmtree(OUTPUT_FOLDER)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
@@ -32,30 +39,52 @@ def parse_mib_to_json(mib_path, output_dir):
     try:
         mib_dir = os.path.dirname(mib_path)
         mib_filename = os.path.basename(mib_path)
-        mib_name = os.path.splitext(mib_filename)[0]
+        # ファイル名から拡張子を除いたものをMIB名と仮定
+        assumed_mib_name = os.path.splitext(mib_filename)[0]
 
-        mibSearcher = StubSearcher(mib_dir)
+        print(f"DEBUG: Starting compilation for {mib_filename}", file=sys.stderr)
+
+        # パーサーの設定
         mibParser = SmiStarParser()
         mibWriter = PyFileWriter(output_dir)
         mibCompiler = MibCompiler(mibParser, JsonCodeGen(), mibWriter)
         
-        # 警告が出るため add_sources を使用 (なければ addSources)
-        if hasattr(mibCompiler, 'add_sources'):
-            mibCompiler.add_sources(FileReader(mib_dir))
-        else:
-            mibCompiler.addSources(FileReader(mib_dir))
-        
-        # コンパイル実行
-        mibCompiler.compile(mib_name)
+        # ▼▼▼ 修正: 依存関係解決のためにWebソースを追加 ▼▼▼
+        # 標準MIB (SNMPv2-SMIなど) をここから探します
+        web_reader = HttpReader('https://mibs.pysnmp.com/asn1/')
+        file_reader = FileReader(mib_dir)
 
-        json_file = os.path.join(output_dir, mib_name + '.json')
-        if os.path.exists(json_file):
-            return json_file, mib_name
+        if hasattr(mibCompiler, 'add_sources'):
+            mibCompiler.add_sources(file_reader, web_reader)
         else:
-            print(f"Error: JSON file not created at {json_file}")
-            return None, None
+            mibCompiler.addSources(file_reader, web_reader)
+        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        # コンパイル実行
+        # ファイル名ではなく、ファイルの中身の定義名で出力されることがあるため
+        # まずコンパイルを実行させる
+        mibCompiler.compile(assumed_mib_name)
+
+        # ▼▼▼ 修正: 生成されたファイルを賢く探す ▼▼▼
+        # 1. ファイル名と同じ名前のJSONがあるか？
+        expected_json = os.path.join(output_dir, assumed_mib_name + '.json')
+        if os.path.exists(expected_json):
+            return expected_json, assumed_mib_name
+        
+        # 2. なければ、フォルダ内にある最新のJSONを探す
+        # (MIBファイル内の定義名がファイル名と違う場合への対策)
+        json_files = [f for f in os.listdir(output_dir) if f.endswith('.json')]
+        if json_files:
+            found_file = json_files[0] # 最初に見つかったものを採用
+            real_mib_name = os.path.splitext(found_file)[0]
+            print(f"DEBUG: Found alternative JSON file: {found_file}", file=sys.stderr)
+            return os.path.join(output_dir, found_file), real_mib_name
+
+        print(f"Error: No JSON file created. Files in output: {os.listdir(output_dir)}", file=sys.stderr)
+        return None, None
+
     except Exception as e:
-        print(f"MIB Parse Error: {e}")
+        print(f"MIB Parse Error: {e}", file=sys.stderr)
         traceback.print_exc()
         return None, None
 
@@ -124,7 +153,7 @@ def get_ai_descriptions(symbol_list, lang='ja'):
             return json.loads(ai_result_text[start:end])
         return {}
     except Exception as e:
-        print(f"AI Error: {e}")
+        print(f"AI Error: {e}", file=sys.stderr)
         return {}
 
 def generate_profile_yaml(mib_name, metrics_data, traps_data):
@@ -158,6 +187,7 @@ def health():
 @app.route('/parse', methods=['POST'])
 def parse():
     try:
+        print("Received /parse request", file=sys.stderr)
         if 'mib_file' not in request.files:
             return jsonify({"error": "No file part"}), 400
         
@@ -200,10 +230,10 @@ def parse():
                     "traps": traps_list
                 })
             else:
-                return jsonify({"error": "Failed to parse MIB file. Check logs for details."}), 500
+                return jsonify({"error": "Failed to parse MIB file. Dependencies (standard MIBs) might be missing or internet access is blocked."}), 500
 
     except Exception as e:
-        print(f"Exception in /parse: {e}")
+        print(f"Exception in /parse: {e}", file=sys.stderr)
         traceback.print_exc()
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
@@ -232,12 +262,16 @@ def generate():
             "yaml_preview": yaml_content
         })
     except Exception as e:
+        print(f"Exception in /generate: {e}", file=sys.stderr)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
+# ---------------------------------------------------------
+# Lambda Handler
+# ---------------------------------------------------------
 lambda_handler = make_lambda_handler(app)
 
 if __name__ == '__main__':
