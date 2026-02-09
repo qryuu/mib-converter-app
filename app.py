@@ -238,5 +238,7 @@ def generate():
 def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
+lambda_handler = make_lambda_handler(app)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
