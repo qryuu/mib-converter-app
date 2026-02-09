@@ -3,12 +3,11 @@ import json
 import yaml
 import time
 import boto3
-from flask import Flask, render_template_string, request, send_file, url_for, redirect
+from flask import Flask, render_template_string, request, send_file
 
-# --- New Relic 初期化 (Lambda環境変数を読み込む) ---
+# --- New Relic 初期化 ---
 import newrelic.agent
 try:
-    # Lambda環境では設定ファイルなしで環境変数から初期化を試みる
     newrelic.agent.initialize()
 except:
     pass
@@ -22,17 +21,17 @@ from pysmi.compiler import MibCompiler
 
 app = Flask(__name__)
 
-# New RelicでFlaskアプリ全体をラップ (WSGI計測)
+# New RelicでFlaskアプリ全体をラップ
 app.wsgi_app = newrelic.agent.WSGIApplicationWrapper(app.wsgi_app)
 
-# --- Lambda環境対応: 書き込み可能な /tmp ディレクトリを使用 ---
+# Lambda環境対応
 UPLOAD_FOLDER = '/tmp/uploads'
 OUTPUT_FOLDER = '/tmp/outputs'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # ---------------------------------------------------------
-# 1. 翻訳データ (Dictionary)
+# 1. 翻訳データ
 # ---------------------------------------------------------
 TRANSLATIONS = {
     'ja': {
@@ -54,8 +53,7 @@ TRANSLATIONS = {
         'step3_desc': '以下の内容で生成されました。',
         'btn_download': 'YAMLファイルをダウンロード',
         'btn_home': '最初に戻る',
-        'lang_switch_label': 'English',
-        'ai_loading': 'AIが解析中...'
+        'lang_switch_label': 'English'
     },
     'en': {
         'title': 'MIB to Ktranslate Converter',
@@ -76,15 +74,14 @@ TRANSLATIONS = {
         'step3_desc': 'The profile has been generated successfully.',
         'btn_download': 'Download YAML',
         'btn_home': 'Go Home',
-        'lang_switch_label': '日本語',
-        'ai_loading': 'AI is analyzing...'
+        'lang_switch_label': '日本語'
     }
 }
 
 # ---------------------------------------------------------
-# 2. HTML テンプレート
+# 2. HTML テンプレート (ブロック継承を使わず、単純な差し込みに変更)
 # ---------------------------------------------------------
-HTML_BASE = """
+HTML_LAYOUT = """
 <!doctype html>
 <html lang="{{ lang }}">
 <head>
@@ -106,7 +103,6 @@ HTML_BASE = """
         textarea { width: 100%; height: 400px; font-family: monospace; border: 1px solid #ccc; padding: 10px; background-color: #f8f9fa; }
         .badge-high { color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 4px; }
         .badge-low { color: #6c757d; background-color: #e9ecef; padding: 2px 6px; border-radius: 4px; }
-        .loading { font-style: italic; color: #666; }
     </style>
     <script>
         function toggleAll(source) {
@@ -125,14 +121,13 @@ HTML_BASE = """
                 <a href="?lang={{ 'en' if lang == 'ja' else 'ja' }}">{{ txt.lang_switch_label }}</a>
             </div>
         </div>
-        {% block content %}{% endblock %}
-    </div>
+        </div>
 </body>
 </html>
 """
 
-HTML_UPLOAD = HTML_BASE + """
-{% block content %}
+# 各画面のパーツ（HTML_BASEを継承せず、単体で定義）
+HTML_PART_UPLOAD = """
     <h2>{{ txt.step1_title }}</h2>
     <p>{{ txt.step1_desc }}</p>
     <form action="/parse?lang={{ lang }}" method="post" enctype="multipart/form-data">
@@ -140,11 +135,9 @@ HTML_UPLOAD = HTML_BASE + """
         <br><br>
         <button type="submit">{{ txt.btn_parse }}</button>
     </form>
-{% endblock %}
 """
 
-HTML_SELECT = HTML_BASE + """
-{% block content %}
+HTML_PART_SELECT = """
     <h2>{{ txt.step2_title }}</h2>
     <p>{{ txt.step2_desc }} (MIB: {{ mib_name }})</p>
     
@@ -186,11 +179,9 @@ HTML_SELECT = HTML_BASE + """
         <button type="submit">{{ txt.btn_generate }}</button>
         <a href="/?lang={{ lang }}"><button type="button" class="back-btn">{{ txt.btn_back }}</button></a>
     </form>
-{% endblock %}
 """
 
-HTML_RESULT = HTML_BASE + """
-{% block content %}
+HTML_PART_RESULT = """
     <h2>{{ txt.step3_title }}</h2>
     <p>{{ txt.step3_desc }}</p>
     <textarea readonly>{{ yaml_content }}</textarea>
@@ -201,15 +192,19 @@ HTML_RESULT = HTML_BASE + """
     <a href="/?lang={{ lang }}">
         <button type="button" class="back-btn">{{ txt.btn_home }}</button>
     </a>
-{% endblock %}
 """
 
 # ---------------------------------------------------------
-# 3. ヘルパー関数 (MIB解析 & AI)
+# 3. ヘルパー関数
 # ---------------------------------------------------------
 
+def render_page(content_html, **kwargs):
+    """レイアウトにコンテンツを埋め込んでレンダリングする"""
+    # テンプレート文字列レベルで結合してから、Jinja2で変数を埋め込む
+    full_template = HTML_LAYOUT.replace('', content_html)
+    return render_template_string(full_template, **kwargs)
+
 def parse_mib_to_json(mib_path, output_dir):
-    """pysmiを使ってMIBをJSONに変換"""
     mib_dir = os.path.dirname(mib_path)
     mib_filename = os.path.basename(mib_path)
     mib_name = os.path.splitext(mib_filename)[0]
@@ -220,12 +215,10 @@ def parse_mib_to_json(mib_path, output_dir):
     mibCompiler = MibCompiler(mibParser, JsonCodeGen(), mibWriter)
     mibCompiler.addSources(FileReader(mib_dir))
     
-    # 依存関係エラーが出ても一旦無視して解析を試みる
     try:
         results = mibCompiler.compile(mib_name)
     except Exception as e:
         print(f"Compile Warning: {e}")
-        # 強制的にJSONパスを確認
         pass
 
     json_file = os.path.join(output_dir, mib_name + '.json')
@@ -234,7 +227,6 @@ def parse_mib_to_json(mib_path, output_dir):
     return None, None
 
 def extract_candidates(json_path):
-    """JSONからOID候補リストを抽出"""
     with open(json_path, 'r') as f:
         data = json.load(f)
     
@@ -250,60 +242,40 @@ def extract_candidates(json_path):
     return candidates
 
 def get_ai_descriptions(symbol_list, lang='ja'):
-    """Amazon Bedrock (Claude 3 Haiku) を呼び出して解説を生成"""
-    if not symbol_list:
-        return {}
-
+    if not symbol_list: return {}
     try:
         bedrock = boto3.client(service_name='bedrock-runtime', region_name='ap-northeast-1')
-        
-        # OID名リストを文字列化 (長すぎるとエラーになるため上位30個程度に制限推奨だが、今回はそのまま)
         target_symbols = symbol_list[:50] 
         symbols_str = "\n".join(target_symbols)
-        
         lang_instruction = "Japanese" if lang == 'ja' else "English"
         
         prompt = f"""
         You are a network monitoring expert.
         Explain the following SNMP OID symbols in {lang_instruction}.
         Also determine the importance (High/Low) for monitoring.
-        
         Return ONLY valid JSON format mapping the symbol to description and importance.
-        Do not include any markdown formatting or explanation outside the JSON.
-        
-        Example format:
-        {{
-            "oid_name": {{ "desc": "Explanation here", "importance": "High" }}
-        }}
-        
-        Symbols:
-        {symbols_str}
+        {{ "oid_name": {{ "desc": "Explanation", "importance": "High" }} }}
+        Symbols: {symbols_str}
         """
 
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 2000,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": [{"role": "user", "content": prompt}]
         })
 
         response = bedrock.invoke_model(
             modelId='anthropic.claude-3-haiku-20240307-v1:0',
             body=body
         )
-        
         response_body = json.loads(response.get('body').read())
         ai_result_text = response_body['content'][0]['text']
         
-        # JSON部分だけを抽出する簡易ロジック
         start = ai_result_text.find('{')
         end = ai_result_text.rfind('}') + 1
         if start != -1 and end != -1:
-            json_str = ai_result_text[start:end]
-            return json.loads(json_str)
+            return json.loads(ai_result_text[start:end])
         return {}
-
     except Exception as e:
         print(f"AI Error: {e}")
         return {}
@@ -311,18 +283,13 @@ def get_ai_descriptions(symbol_list, lang='ja'):
 def generate_yaml_structure(json_path, mib_name, selected_symbols):
     with open(json_path, 'r') as f:
         data = json.load(f)
-
     metrics = []
     for symbol in selected_symbols:
         if symbol in data:
             metrics.append({
                 'MIB': mib_name,
-                'symbol': {
-                    'OID': data[symbol]['oid'],
-                    'name': symbol
-                }
+                'symbol': {'OID': data[symbol]['oid'], 'name': symbol}
             })
-
     return {'metrics': metrics, 'sysobjectid': '1.3.6.1.4.1.CHANGE_THIS'}
 
 # ---------------------------------------------------------
@@ -332,7 +299,7 @@ def generate_yaml_structure(json_path, mib_name, selected_symbols):
 @app.route('/', methods=['GET'])
 def index():
     lang = request.args.get('lang', 'ja')
-    return render_template_string(HTML_UPLOAD, txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), lang=lang)
+    return render_page(HTML_PART_UPLOAD, txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), lang=lang)
 
 @app.route('/parse', methods=['POST'])
 @newrelic.agent.background_task(name="parse_mib_task", group="MIB_Processing")
@@ -346,12 +313,9 @@ def parse():
 
     if file:
         newrelic.agent.add_custom_parameter('mib_filename', file.filename)
-        
-        # Lambdaの一時領域に保存
         mib_path = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(mib_path)
 
-        # MIB解析
         with newrelic.agent.FunctionTrace(name='parse_mib_logic'):
             json_path, mib_name = parse_mib_to_json(mib_path, OUTPUT_FOLDER)
         
@@ -359,16 +323,13 @@ def parse():
             candidates_raw = extract_candidates(json_path)
             newrelic.agent.add_custom_parameter('oid_candidate_count', len(candidates_raw))
             
-            # AI解説生成 (Bedrock)
             symbols = [c['name'] for c in candidates_raw]
-            
             start_time = time.time()
             with newrelic.agent.FunctionTrace(name='bedrock_ai_generation'):
                 ai_data = get_ai_descriptions(symbols, lang=lang)
             duration = time.time() - start_time
             newrelic.agent.add_custom_parameter('ai_duration_sec', duration)
 
-            # データマージ
             candidates = []
             for c in candidates_raw:
                 c_name = c['name']
@@ -377,14 +338,14 @@ def parse():
                 c['importance'] = ai_info.get('importance', '-')
                 candidates.append(c)
 
-            return render_template_string(HTML_SELECT, 
-                                          txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), 
-                                          lang=lang,
-                                          candidates=candidates, 
-                                          mib_name=mib_name, 
-                                          json_path=json_path)
+            return render_page(HTML_PART_SELECT, 
+                               txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), 
+                               lang=lang,
+                               candidates=candidates, 
+                               mib_name=mib_name, 
+                               json_path=json_path)
         else:
-            return "Failed to parse MIB file. Please check if it has dependencies."
+            return "Failed to parse MIB file."
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -394,7 +355,7 @@ def generate():
     mib_name = request.form.get('mib_name')
 
     if not json_path or not os.path.exists(json_path):
-        return "Session expired or file not found."
+        return "Session expired."
 
     profile_data = generate_yaml_structure(json_path, mib_name, selected_symbols)
     yaml_content = yaml.dump(profile_data, sort_keys=False, default_flow_style=False)
@@ -404,16 +365,16 @@ def generate():
     with open(output_path, 'w') as f:
         f.write(yaml_content)
 
-    return render_template_string(HTML_RESULT, 
-                                  txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), 
-                                  lang=lang,
-                                  yaml_content=yaml_content, 
-                                  filename=output_filename)
+    return render_page(HTML_PART_RESULT, 
+                       txt=TRANSLATIONS.get(lang, TRANSLATIONS['ja']), 
+                       lang=lang,
+                       yaml_content=yaml_content, 
+                       filename=output_filename)
 
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
 if __name__ == '__main__':
-    # ローカル実行用
+    # Lambda環境ではデバッグモード無効化（/dev/shmエラー回避）
     app.run(host='0.0.0.0', port=8080, debug=False)
