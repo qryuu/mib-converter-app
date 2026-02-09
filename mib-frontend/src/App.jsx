@@ -27,7 +27,10 @@ const TEXT = {
     reset_btn: "最初に戻る",
     alert_no_file: "ファイルを選択してください",
     alert_error_parse: "解析に失敗しました。ファイルが正しいか確認してください。",
-    alert_error_gen: "生成に失敗しました。"
+    alert_error_gen: "生成に失敗しました。",
+    // ▼ 追加: ファイル選択周り
+    select_file_btn: "ファイルを選択",
+    no_file_selected: "選択されていません"
   },
   en: {
     title: "MIB to KTranslate Converter",
@@ -52,17 +55,20 @@ const TEXT = {
     reset_btn: "Start Over",
     alert_no_file: "Please select a file.",
     alert_error_parse: "Analysis failed. Please check if the file is valid.",
-    alert_error_gen: "Generation failed."
+    alert_error_gen: "Generation failed.",
+    // ▼ Add: File selection
+    select_file_btn: "Choose File",
+    no_file_selected: "No file selected"
   }
 }
 
 function App() {
-  // ★ APIのエンドポイント (Amplify環境変数で切り替えるのが理想ですが、今はハードコードでOK)
+  // ★ APIのエンドポイント
   const API_BASE_URL = "https://rzbtaqg1t1.execute-api.ap-northeast-1.amazonaws.com"
 
   // 言語設定 (デフォルト: ja)
   const [lang, setLang] = useState('ja')
-  const t = TEXT[lang] // 現在の言語のテキストオブジェクト
+  const t = TEXT[lang]
 
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
@@ -71,8 +77,20 @@ function App() {
   const [traps, setTraps] = useState([])
   const [resultYaml, setResultYaml] = useState('')
   const [downloadUrl, setDownloadUrl] = useState('')
+  
+  // ▼ 追加: ファイル名表示用
+  const [fileName, setFileName] = useState('')
 
   const fileInputRef = useRef(null)
+
+  // ▼ ファイル選択時のハンドラ (表示用)
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setFileName(e.target.files[0].name)
+    } else {
+      setFileName('')
+    }
+  }
 
   // Step 1: ファイルアップロード & 解析
   const handleUpload = async (event) => {
@@ -88,7 +106,6 @@ function App() {
     setLoading(true)
     const formData = new FormData()
     formData.append('mib_file', file)
-    // ▼▼▼ ここで選択された言語を送ることでAIもその言語で回答します ▼▼▼
     formData.append('lang', lang)
 
     try {
@@ -193,12 +210,33 @@ function App() {
         <div className="card">
           <h2>{t.step1_title}</h2>
           <form onSubmit={handleUpload}>
-            <input 
-              type="file" 
-              required 
-              accept=".mib,.my,.txt" 
-              ref={fileInputRef} 
-            />
+            
+            {/* ▼▼▼ 修正: カスタムファイル選択ボタン ▼▼▼ */}
+            <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* 本物のinputは隠す */}
+              <input 
+                type="file" 
+                required 
+                accept=".mib,.my,.txt" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} // 変更時にファイル名を取得
+                style={{ display: 'none' }} 
+              />
+              {/* カスタムボタン */}
+              <button 
+                type="button" 
+                className="secondary-btn" 
+                onClick={() => fileInputRef.current.click()}
+              >
+                {t.select_file_btn}
+              </button>
+              {/* ファイル名表示 */}
+              <span style={{ color: '#666' }}>
+                {fileName || t.no_file_selected}
+              </span>
+            </div>
+            {/* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */}
+
             <button type="submit" className="primary-btn">{t.analyze_btn}</button>
           </form>
         </div>
