@@ -13,6 +13,7 @@ from pysmi.writer import PyFileWriter
 from pysmi.parser import SmiStarParser
 from pysmi.codegen import JsonCodeGen
 from pysmi.compiler import MibCompiler
+from apig_wsgi import make_lambda_handler
 
 app = Flask(__name__)
 CORS(app)

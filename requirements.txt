@@ -3,3 +3,4 @@ flask-cors
 pysmi
 pyyaml
 boto3
+apig-wsgi
