@@ -2,6 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: MIB Converter App
 
+# ▼▼▼ deploy.yml から値を受け取るための設定 ▼▼▼
 Parameters:
   NewRelicAccountId:
     Type: String
@@ -18,15 +19,36 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
-      Handler: app.lambda_handler
+      # ▼ New Relic のラッパーをハンドラーに指定 (重要)
+      Handler: newrelic_lambda_wrapper.handler
       Runtime: python3.9
       Timeout: 180
       MemorySize: 512
       Architectures: [x86_64]
+      
+      # ▼ New Relic Layer (Tokyo Region Python 3.9)
+      Layers:
+        - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython39:163
+
       Environment:
         Variables:
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap        
+          # ▼ アプリケーションの本当のハンドラー
+          NEW_RELIC_LAMBDA_HANDLER: app.lambda_handler
+          
+          # ▼ パラメータから受け取った機密情報
+          NEW_RELIC_ACCOUNT_ID: !Ref NewRelicAccountId
+          NEW_RELIC_LICENSE_KEY: !Ref NewRelicLicenseKey
+          
+          # ▼ New Relic 設定
+          NEW_RELIC_APP_NAME: "MIB-Converter-Lambda"
+          NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
+          NEW_RELIC_EXTENSION_LOG_LEVEL: "INFO"
+          NEW_RELIC_AI_MONITORING_ENABLED: "true"
+          
+          # ▼ 既存のアプリ設定
           bucket_name: !Ref MibBucket
+          # 注意: AWS_LAMBDA_EXEC_WRAPPER は削除しました (Layer方式と競合するため)
+
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref MibBucket
@@ -37,6 +59,9 @@ Resources:
       Events:
         HttpApi:
           Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: any
 
 Outputs:
   ApiUrl:
