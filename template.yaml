@@ -47,8 +47,8 @@ Resources:
           # ▼ ログ転送とデバッグ設定 (動作確認のため一時的に debug にします)
           NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
           NEW_RELIC_EXTENSION_SEND_EXTENSION_LOGS: "true"
-          NEW_RELIC_EXTENSION_LOG_LEVEL: "DEBUG"
-          NEW_RELIC_LOG_LEVEL: "debug"
+          NEW_RELIC_EXTENSION_LOG_LEVEL: "INFO"
+          NEW_RELIC_LOG_LEVEL: "info"
           
           # ▼ AIモニタリング (Bedrock) 設定
           NEW_RELIC_AI_MONITORING_ENABLED: "true"
