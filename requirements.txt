@@ -3,4 +3,3 @@ flask-cors
 pysmi
 pyyaml
 boto3
-newrelic
