@@ -1,0 +1,26 @@
+/* App.css */
+.container { max-width: 1000px; margin: 0 auto; padding: 20px; font-family: sans-serif; color: #333; }
+header { text-align: center; margin-bottom: 30px; }
+.card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+.full-width { max-width: 100%; }
+
+.primary-btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+.secondary-btn { background: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 10px; }
+.primary-btn:hover { background: #0056b3; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; }
+th { background: #f8f9fa; }
+.dimmed { opacity: 0.5; }
+
+.trap-input { width: 100%; height: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; }
+.yaml-preview { width: 100%; height: 400px; background: #f4f4f4; border: 1px solid #ddd; padding: 10px; font-family: monospace; }
+.hint { font-size: 0.9em; color: #666; }
+
+.loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+.spinner { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.badge { padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
+.badge.high { background: #ffe6e6; color: #dc3545; }
+.badge.low { background: #e9ecef; color: #6c757d; }
