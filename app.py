@@ -13,7 +13,7 @@ from apig_wsgi import make_lambda_handler
 # pysmi 関連
 from pysmi.reader import FileReader, HttpReader
 from pysmi.searcher import StubSearcher
-from pysmi.writer import FileWriter  # <--- PyFileWriter から変更
+from pysmi.writer import FileWriter
 from pysmi.parser import SmiStarParser
 from pysmi.codegen import JsonCodeGen
 from pysmi.compiler import MibCompiler
@@ -46,9 +46,8 @@ def parse_mib_to_json(mib_path, output_dir):
         # パーサーの設定
         mibParser = SmiStarParser()
         
-        # ▼▼▼ 修正箇所: JSONとして書き出す設定 ▼▼▼
-        # PyFileWriter(.py) ではなく FileWriter(.json) を使用
-        mibWriter = FileWriter(output_dir).setOptions(suffix='.json')
+        # ▼▼▼ 修正箇所: 拡張子をここで指定する (setOptionsは使わない) ▼▼▼
+        mibWriter = FileWriter(output_dir, suffix='.json')
         
         mibCompiler = MibCompiler(mibParser, JsonCodeGen(), mibWriter)
         
@@ -71,12 +70,8 @@ def parse_mib_to_json(mib_path, output_dir):
             return expected_json, assumed_mib_name
         
         # 2. なければ、フォルダ内にある最新のJSONを探す
-        # (MIB内部名 "TMSP-MIB" がファイル名 "TMSP_r2..." と違う場合に対応)
         json_files = [f for f in os.listdir(output_dir) if f.endswith('.json')]
         
-        # 依存関係のJSONも生成される可能性があるため、ターゲットっぽいものを探す
-        # 単純にリストの一番目ではなく、入力ファイル名に近いか、あるいは最後に更新されたものを取る手もあるが
-        # ここでは「依存関係MIB(SNMPv2など)以外のもの」を優先するロジックを入れる
         target_json = None
         standard_mibs = ['SNMPv2-SMI', 'RFC1213-MIB', 'SNMPv2-TC', 'RFC-1212', 'RFC-1215', 'RFC1155-SMI', 'SNMPv2-CONF']
         
@@ -90,7 +85,6 @@ def parse_mib_to_json(mib_path, output_dir):
             print(f"DEBUG: Found target JSON file: {target_json}", file=sys.stderr)
             return os.path.join(output_dir, target_json), os.path.splitext(target_json)[0]
         
-        # 見つからない場合、とりあえず最初のJSONを返す
         if json_files:
             print(f"DEBUG: Fallback to first JSON file: {json_files[0]}", file=sys.stderr)
             return os.path.join(output_dir, json_files[0]), os.path.splitext(json_files[0])[0]
