@@ -328,7 +328,8 @@ def download_file(filename):
 # ---------------------------------------------------------
 
 # ▼▼▼ 修正箇所: Lambda Handler で New Relic を強制送信 ▼▼▼
-wsgi_handler = make_lambda_handler(app)
+app_wrapped = newrelic.agent.wsgi_application()(app)
+wsgi_handler = make_lambda_handler(app_wrapped)
 
 def lambda_handler(event, context):
     try:
