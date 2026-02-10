@@ -328,10 +328,8 @@ def download_file(filename):
 # ---------------------------------------------------------
 
 # ▼▼▼ 修正箇所: デコレーターを削除し、手動でのシャットダウンに戻す ▼▼▼
-app_wrapped = newrelic.agent.wsgi_application()(app)
-wsgi_handler = make_lambda_handler(app_wrapped)
+wsgi_handler = make_lambda_handler(app)
 
-@newrelic.agent.lambda_handler()
 def lambda_handler(event, context):
     return wsgi_handler(event, context)
 

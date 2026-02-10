@@ -20,7 +20,7 @@ Resources:
     Properties:
       CodeUri: .
       # ▼ New Relic のラッパーをハンドラーに指定 (重要)
-      Handler: app.lambda_handler
+      Handler: newrelic_lambda_wrapper.handler
       Runtime: python3.12
       Timeout: 180
       # ▼ Late Payload (送信遅れ) を防ぐため 1024MB に増強
