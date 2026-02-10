@@ -327,8 +327,9 @@ def download_file(filename):
 # Lambda Handler (New Relic 強制送信対応版)
 # ---------------------------------------------------------
 
-# ▼▼▼ 修正箇所: デコレーターを削除し、手動でのシャットダウンに戻す ▼▼▼
-wsgi_handler = make_lambda_handler(app)
+# ▼▼▼ 修正箇所: New Relic の WSGI ラッパーを適用し、Flaskアプリを正しく認識させる ▼▼▼
+app_wrapped = newrelic.agent.wsgi_application(app)
+wsgi_handler = make_lambda_handler(app_wrapped)
 
 def lambda_handler(event, context):
     return wsgi_handler(event, context)
