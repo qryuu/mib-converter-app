@@ -327,20 +327,13 @@ def download_file(filename):
 # Lambda Handler (New Relic 強制送信対応版)
 # ---------------------------------------------------------
 
-# ▼▼▼ 修正箇所: Lambda Handler で New Relic を強制送信 ▼▼▼
-app_wrapped = newrelic.agent.wsgi_application()(app)
-wsgi_handler = make_lambda_handler(app_wrapped)
-
+# ▼▼▼ 修正箇所: New Relic のデコレーターを使用 ▼▼▼
+@newrelic.agent.lambda_handler
 def lambda_handler(event, context):
-    try:
-        return wsgi_handler(event, context)
-    finally:
-        # 強制的にデータを送る
-        print("Force sending New Relic data...", file=sys.stderr)
-        try:
-            newrelic.agent.shutdown_agent(timeout=2.0)
-        except Exception as nr_e:
-            print(f"New Relic shutdown error: {nr_e}", file=sys.stderr)
+    # FlaskアプリをNew Relicエージェントでラップし、WSGIハンドラーを作成
+    app_wrapped = newrelic.agent.wsgi_application()(app)
+    wsgi_handler = make_lambda_handler(app_wrapped)
+    return wsgi_handler(event, context)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
