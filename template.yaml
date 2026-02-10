@@ -43,7 +43,9 @@ Resources:
           # ▼ 基本設定
           NEW_RELIC_APP_NAME: "MIB-Converter-Lambda"
           NEW_RELIC_NO_CONFIG_FILE: "true"
-          
+          NEW_RELIC_TRUSTED_ACCOUNT_ID: !Ref NewRelicAccountId # あなたのアカウントID
+          NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+          NEW_RELIC_SPAN_EVENTS_ENABLED: "true"
           # ▼ ログ転送とデバッグ設定 (動作確認のため一時的に debug にします)
           NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
           NEW_RELIC_EXTENSION_SEND_EXTENSION_LOGS: "true"
