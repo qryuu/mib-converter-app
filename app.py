@@ -327,13 +327,17 @@ def download_file(filename):
 # Lambda Handler (New Relic 強制送信対応版)
 # ---------------------------------------------------------
 
-# ▼▼▼ 修正箇所: New Relic のデコレーターを使用 ▼▼▼
-@newrelic.agent.lambda_handler
+# ▼▼▼ 修正箇所: デコレーターを削除し、手動でのシャットダウンに戻す ▼▼▼
+app_wrapped = newrelic.agent.wsgi_application()(app)
+wsgi_handler = make_lambda_handler(app_wrapped)
+
 def lambda_handler(event, context):
-    # FlaskアプリをNew Relicエージェントでラップし、WSGIハンドラーを作成
-    app_wrapped = newrelic.agent.wsgi_application()(app)
-    wsgi_handler = make_lambda_handler(app_wrapped)
-    return wsgi_handler(event, context)
+    try:
+        return wsgi_handler(event, context)
+    finally:
+        # サーバーレス環境では、Lambda終了前にデータを強制的に送信する必要がある
+        print("Force sending New Relic data...", file=sys.stderr)
+        newrelic.agent.shutdown_agent(timeout=2.0)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
