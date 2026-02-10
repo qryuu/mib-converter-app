@@ -332,7 +332,11 @@ app_wrapped = newrelic.agent.wsgi_application()(app)
 wsgi_handler = make_lambda_handler(app_wrapped)
 
 def lambda_handler(event, context):
-    return wsgi_handler(event, context)
+    try:
+        return wsgi_handler(event, context)
+    finally:
+        # Late Payload (送信遅れ) を防ぐため、処理終了時に強制的にデータを送信する
+        newrelic.agent.shutdown_agent(timeout=2.0)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
