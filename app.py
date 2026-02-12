@@ -325,8 +325,6 @@ def download_file(filename):
 # Lambda Handler (New Relic Lambda Extension 対応版)
 # ---------------------------------------------------------
 
-# New Relic WSGIラッパーは削除 (template.yamlのHandlerでラップされるため不要)
-# app_wrapped = newrelic.agent.WSGIApplicationWrapper(app)
 wsgi_handler = make_lambda_handler(app)
 
 def lambda_handler(event, context):
