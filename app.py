@@ -8,6 +8,8 @@ import sys
 import shutil
 # ▼▼▼ 追加 1: New Relic Agent ▼▼▼
 import newrelic.agent
+# Lambda環境でのNew Relic初期化
+newrelic.agent.initialize()
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -324,15 +326,50 @@ def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
 # ---------------------------------------------------------
-# Lambda Handler (New Relic 強制送信対応版)
+# Lambda Handler (New Relic 対応版 - 最終版)
 # ---------------------------------------------------------
 
-# ▼▼▼ 修正箇所: New Relic の WSGI ラッパーを適用し、Flaskアプリを正しく認識させる ▼▼▼
-app_wrapped = newrelic.agent.wsgi_application()(app)
+# New Relic WSGIラッパーを適用（Web Transactionとして認識される）
+app_wrapped = newrelic.agent.WSGIApplicationWrapper(app)
 wsgi_handler = make_lambda_handler(app_wrapped)
 
 def lambda_handler(event, context):
-    return wsgi_handler(event, context)
+    """
+    Lambda Handler with New Relic APM support
+    
+    WSGIApplicationWrapperが自動的にWeb Transactionを作成するため、
+    @background_taskデコレータは使用しない。
+    エンドポイント別のトランザクション名（/parse, /generateなど）は
+    Flask計装が自動的に設定する。
+    """
+    try:
+        # カスタム属性を追加（オプション）
+        # getattr を使用してローカルテスト時などでもエラーにならないようにする
+        if context:
+            newrelic.agent.add_custom_attribute(
+                'aws_request_id', 
+                getattr(context, 'aws_request_id', 'unknown')
+            )
+            newrelic.agent.add_custom_attribute(
+                'function_name', 
+                getattr(context, 'function_name', 'unknown')
+            )
+            newrelic.agent.add_custom_attribute(
+                'memory_limit_mb', 
+                getattr(context, 'memory_limit_in_mb', 0)
+            )
+
+        # WSGIハンドラーを実行（Web Transactionとして記録される）
+        return wsgi_handler(event, context)
+        
+    except Exception as e:
+        # エラーを記録（自動的にアクティブなトランザクションに紐付く）
+        newrelic.agent.notice_error()
+        raise
+    finally:
+        # Lambda実行終了前にデータを強制送信
+        # タイムアウト値は環境に応じて調整（1.0〜3.0秒を推奨）
+        newrelic.agent.shutdown_agent(timeout=2.0)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
