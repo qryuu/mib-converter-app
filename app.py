@@ -8,8 +8,8 @@ import sys
 import shutil
 # ▼▼▼ 追加 1: New Relic Agent ▼▼▼
 import newrelic.agent
-# Lambda環境でのNew Relic初期化
-newrelic.agent.initialize()
+# Lambda Extension使用時は初期化しない（Extensionが自動的に行う）
+# newrelic.agent.initialize() は不要
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -326,25 +326,24 @@ def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
 
 # ---------------------------------------------------------
-# Lambda Handler (New Relic 対応版 - 最終版)
+# Lambda Handler (New Relic Lambda Extension 対応版)
 # ---------------------------------------------------------
 
-# New Relic WSGIラッパーを適用（Web Transactionとして認識される）
+# New Relic WSGIラッパーを適用
 app_wrapped = newrelic.agent.WSGIApplicationWrapper(app)
 wsgi_handler = make_lambda_handler(app_wrapped)
 
 def lambda_handler(event, context):
     """
-    Lambda Handler with New Relic APM support
+    Lambda Handler with New Relic Lambda Extension
     
-    WSGIApplicationWrapperが自動的にWeb Transactionを作成するため、
-    @background_taskデコレータは使用しない。
-    エンドポイント別のトランザクション名（/parse, /generateなど）は
-    Flask計装が自動的に設定する。
+    重要: Lambda Extensionを使用する場合、以下の点に注意：
+    1. newrelic.agent.initialize() は呼ばない（Extensionが自動初期化）
+    2. shutdown_agent() は呼ばない（Extensionが自動的にデータを収集・送信）
+    3. WSGIApplicationWrapperのみを使用してWeb Transactionを記録
     """
     try:
         # カスタム属性を追加（オプション）
-        # getattr を使用してローカルテスト時などでもエラーにならないようにする
         if context:
             newrelic.agent.add_custom_attribute(
                 'aws_request_id', 
@@ -359,17 +358,14 @@ def lambda_handler(event, context):
                 getattr(context, 'memory_limit_in_mb', 0)
             )
 
-        # WSGIハンドラーを実行（Web Transactionとして記録される）
+        # WSGIハンドラーを実行
+        # Lambda Extensionが自動的にトランザクションデータを収集する
         return wsgi_handler(event, context)
         
     except Exception as e:
-        # エラーを記録（自動的にアクティブなトランザクションに紐付く）
+        # エラーを記録
         newrelic.agent.notice_error()
         raise
-    finally:
-        # Lambda実行終了前にデータを強制送信
-        # タイムアウト値は環境に応じて調整（1.0〜3.0秒を推奨）
-        newrelic.agent.shutdown_agent(timeout=2.0)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
