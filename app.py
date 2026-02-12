@@ -6,10 +6,6 @@ import boto3
 import traceback
 import sys
 import shutil
-# ▼▼▼ 追加 1: New Relic Agent ▼▼▼
-import newrelic.agent
-# Lambda Extension使用時は初期化しない（Extensionが自動的に行う）
-# newrelic.agent.initialize() は不要
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -334,35 +330,4 @@ def download_file(filename):
 wsgi_handler = make_lambda_handler(app)
 
 def lambda_handler(event, context):
-    """
-    Lambda Handler with New Relic Lambda Extension
-    
-    重要: Lambda Extensionを使用する場合、以下の点に注意：
-    1. newrelic.agent.initialize() は呼ばない（Extensionが自動初期化）
-    2. shutdown_agent() は呼ばない（Extensionが自動的にデータを収集・送信）
-    3. WSGIApplicationWrapperは使用しない（二重ラップによるLate Payload回避）
-    """
-    try:
-        # カスタム属性を追加（オプション）
-        if context:
-            newrelic.agent.add_custom_attribute(
-                'aws_request_id', 
-                getattr(context, 'aws_request_id', 'unknown')
-            )
-            newrelic.agent.add_custom_attribute(
-                'function_name', 
-                getattr(context, 'function_name', 'unknown')
-            )
-            newrelic.agent.add_custom_attribute(
-                'memory_limit_mb', 
-                getattr(context, 'memory_limit_in_mb', 0)
-            )
-
-        # WSGIハンドラーを実行
-        # Lambda Extensionが自動的にトランザクションデータを収集する
-        return wsgi_handler(event, context)
-        
-    except Exception as e:
-        # エラーを記録
-        newrelic.agent.notice_error()
-        raise
+    return wsgi_handler(event, context)
