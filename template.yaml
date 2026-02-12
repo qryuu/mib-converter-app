@@ -58,6 +58,7 @@ Resources:
           NEW_RELIC_CUSTOM_ATTRIBUTES_ENABLED: "true"
           NEW_RELIC_AIM_DATA_DROPPING_DISABLED: "true"
           NEW_RELIC_LAMBDA_EXTENSION_ENABLED: "true"
+          NEW_RELIC_SERVERLESS_MODE_ENABLED: "false"
 
           # ▼ アプリがS3を使うための設定 
           bucket_name: !Ref MibBucket
