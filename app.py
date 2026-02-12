@@ -366,6 +366,3 @@ def lambda_handler(event, context):
         # エラーを記録
         newrelic.agent.notice_error()
         raise
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=False)
