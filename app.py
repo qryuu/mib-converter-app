@@ -329,9 +329,9 @@ def download_file(filename):
 # Lambda Handler (New Relic Lambda Extension 対応版)
 # ---------------------------------------------------------
 
-# New Relic WSGIラッパーを適用
-app_wrapped = newrelic.agent.WSGIApplicationWrapper(app)
-wsgi_handler = make_lambda_handler(app_wrapped)
+# New Relic WSGIラッパーは削除 (template.yamlのHandlerでラップされるため不要)
+# app_wrapped = newrelic.agent.WSGIApplicationWrapper(app)
+wsgi_handler = make_lambda_handler(app)
 
 def lambda_handler(event, context):
     """
@@ -340,7 +340,7 @@ def lambda_handler(event, context):
     重要: Lambda Extensionを使用する場合、以下の点に注意：
     1. newrelic.agent.initialize() は呼ばない（Extensionが自動初期化）
     2. shutdown_agent() は呼ばない（Extensionが自動的にデータを収集・送信）
-    3. WSGIApplicationWrapperのみを使用してWeb Transactionを記録
+    3. WSGIApplicationWrapperは使用しない（二重ラップによるLate Payload回避）
     """
     try:
         # カスタム属性を追加（オプション）
