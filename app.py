@@ -1,3 +1,4 @@
+import re
 import os
 import json
 import yaml
@@ -125,7 +126,6 @@ def get_ai_descriptions(symbol_list, lang='ja'):
 def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, yaml_lang='en'):
     target_lang = "Japanese" if yaml_lang == 'ja' else "English"
     
-    # ▼▼▼ 修正箇所: プロンプトを大幅に強化 ▼▼▼
     prompt = f"""
     You are an expert in creating SNMP Profiles for Kentik KTranslate.
     Your task is to generate a YAML profile for MIB "{mib_name}".
@@ -138,23 +138,21 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
     1. **Output Structure**: Use the valid Kentik YAML structure.
     2. **Provider**: Set 'provider' to "kentik-{mib_name.lower().replace('mib', '')}".
     3. **Table grouping (CRITICAL)**:
-       - Do NOT list all metrics flat under 'metrics'.
        - Group OIDs that share a common prefix into 'table' blocks.
        - The 'table' OID should be the common parent OID.
        - Inside a 'table', define 'symbols' and 'metric_tags'.
     4. **Symbols vs Tags**:
-       - Put NUMERICAL values (Counters, Gauges, Percentages, Integers) under 'symbols'.
+       - Put NUMERICAL values (Counters, Gauges, Percentages) under 'symbols'.
        - Put STRING values, NAMES, IDs, and INDEXES under 'metric_tags' -> 'column'.
-       - Example: 'cpuUsage' is a symbol. 'serialNumber' or 'cpuIndex' is a metric_tag.
     5. **Descriptions**: Write 'description' in {target_lang}.
     6. **Traps**: Include the traps section exactly as provided.
-    7. **Reference**: Use the structure below as a SYNTAX GUIDE only. DO NOT copy its OIDs or values.
+    7. **Reference**: Use the provided structure as a SYNTAX GUIDE only.
     
     [REFERENCE SYNTAX EXAMPLE]
     metrics:
       - MIB: {mib_name}
         table:
-          OID: 1.3.6.1.4.1.XXXX.1.2  <-- Common Parent
+          OID: 1.3.6.1.4.1.XXXX.1.2
           name: someTable
         symbols:
           - OID: 1.3.6.1.4.1.XXXX.1.2.1.4
@@ -166,14 +164,34 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
               name: cpuIndex
               tag: true
 
-    [GENERATE YAML NOW]
+    Output ONLY the YAML content within code blocks.
     """
     
     try:
-        body = json.dumps({"anthropic_version": "bedrock-2023-05-31", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]})
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31", 
+            "max_tokens": 4000, 
+            "messages": [{"role": "user", "content": prompt}]
+        })
         res = bedrock_client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=body)
-        return json.loads(res['body'].read())['content'][0]['text']
-    except Exception as e: return f"# Error: {str(e)}"
+        raw_text = json.loads(res['body'].read())['content'][0]['text']
+
+        # ▼▼▼ 追加: 正規表現でYAMLブロックの中身だけを抽出 ▼▼▼
+        match = re.search(r'```yaml(.*?)```', raw_text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        # yamlタグがない場合も考慮して汎用的なバッククォート検索
+        match_generic = re.search(r'```(.*?)```', raw_text, re.DOTALL)
+        if match_generic:
+            return match_generic.group(1).strip()
+
+        # マッチしない場合はそのまま返す（万が一Markdownなしで返ってきた場合用）
+        return raw_text.strip()
+        # ▲▲▲ 追加ここまで ▲▲▲
+
+    except Exception as e: 
+        return f"# Error: {str(e)}"
 
 # --- API Endpoints ---
 
