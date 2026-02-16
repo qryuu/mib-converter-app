@@ -125,10 +125,11 @@ def get_ai_descriptions(symbol_list, lang='ja'):
 def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, yaml_lang='en'):
     target_lang = "Japanese" if yaml_lang == 'ja' else "English"
     
+    # プロンプトの強化: Referenceの内容をコピーしないように強い制約を追加
     prompt = f"""
     Create a valid Kentik SNMP Profile (YAML) for MIB "{mib_name}".
     
-    [REFERENCE STYLE]
+    [REFERENCE STYLE (For Structure Only)]
     {reference_content[:3000]}
 
     [INPUT DATA]
@@ -136,12 +137,17 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
     Traps: {json.dumps(traps)}
 
     [OUTPUT RULES]
-    1. Output ONLY valid YAML. No markdown.
-    2. For Polling/Metrics: Write 'description' in {target_lang}.
-    3. For Traps:
+    1. Output ONLY valid YAML. No markdown blocks.
+    2. **CRITICAL**: The [REFERENCE STYLE] provided above is for YAML structure ONLY.
+       - DO NOT copy the 'extends', 'provider', or 'sysobjectid' fields from the reference.
+       - You MUST generate appropriate values for "{mib_name}".
+       - If the device vendor is unknown, use 'provider: kentik-snmp'.
+       - If you don't have specific sysobjectids, strictly omit the 'sysobjectid' section or use a placeholder.
+    3. For Polling/Metrics: Write 'description' in {target_lang}.
+    4. For Traps:
        - If the user provided a message/description, use it EXACTLY as is.
        - If the user provided field is empty or null, generate a concise description in English based on the OID name.
-    4. Group metrics into 'table' blocks where OIDs share a common prefix.
+    5. Group metrics into 'table' blocks where OIDs share a common prefix.
     """
     
     try:
