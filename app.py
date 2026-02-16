@@ -125,29 +125,48 @@ def get_ai_descriptions(symbol_list, lang='ja'):
 def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, yaml_lang='en'):
     target_lang = "Japanese" if yaml_lang == 'ja' else "English"
     
-    # プロンプトの強化: Referenceの内容をコピーしないように強い制約を追加
+    # ▼▼▼ 修正箇所: プロンプトを大幅に強化 ▼▼▼
     prompt = f"""
-    Create a valid Kentik SNMP Profile (YAML) for MIB "{mib_name}".
-    
-    [REFERENCE STYLE (For Structure Only)]
-    {reference_content[:3000]}
+    You are an expert in creating SNMP Profiles for Kentik KTranslate.
+    Your task is to generate a YAML profile for MIB "{mib_name}".
 
     [INPUT DATA]
-    Metrics: {json.dumps(metrics)}
+    Metrics Candidates: {json.dumps(metrics)}
     Traps: {json.dumps(traps)}
 
-    [OUTPUT RULES]
-    1. Output ONLY valid YAML. No markdown blocks.
-    2. **CRITICAL**: The [REFERENCE STYLE] provided above is for YAML structure ONLY.
-       - DO NOT copy the 'extends', 'provider', or 'sysobjectid' fields from the reference.
-       - You MUST generate appropriate values for "{mib_name}".
-       - If the device vendor is unknown, use 'provider: kentik-snmp'.
-       - If you don't have specific sysobjectids, strictly omit the 'sysobjectid' section or use a placeholder.
-    3. For Polling/Metrics: Write 'description' in {target_lang}.
-    4. For Traps:
-       - If the user provided a message/description, use it EXACTLY as is.
-       - If the user provided field is empty or null, generate a concise description in English based on the OID name.
-    5. Group metrics into 'table' blocks where OIDs share a common prefix.
+    [STRICT OUTPUT RULES]
+    1. **Output Structure**: Use the valid Kentik YAML structure.
+    2. **Provider**: Set 'provider' to "kentik-{mib_name.lower().replace('mib', '')}".
+    3. **Table grouping (CRITICAL)**:
+       - Do NOT list all metrics flat under 'metrics'.
+       - Group OIDs that share a common prefix into 'table' blocks.
+       - The 'table' OID should be the common parent OID.
+       - Inside a 'table', define 'symbols' and 'metric_tags'.
+    4. **Symbols vs Tags**:
+       - Put NUMERICAL values (Counters, Gauges, Percentages, Integers) under 'symbols'.
+       - Put STRING values, NAMES, IDs, and INDEXES under 'metric_tags' -> 'column'.
+       - Example: 'cpuUsage' is a symbol. 'serialNumber' or 'cpuIndex' is a metric_tag.
+    5. **Descriptions**: Write 'description' in {target_lang}.
+    6. **Traps**: Include the traps section exactly as provided.
+    7. **Reference**: Use the structure below as a SYNTAX GUIDE only. DO NOT copy its OIDs or values.
+    
+    [REFERENCE SYNTAX EXAMPLE]
+    metrics:
+      - MIB: {mib_name}
+        table:
+          OID: 1.3.6.1.4.1.XXXX.1.2  <-- Common Parent
+          name: someTable
+        symbols:
+          - OID: 1.3.6.1.4.1.XXXX.1.2.1.4
+            name: cpuStatsIdle
+            type: gauge
+        metric_tags:
+          - column:
+              OID: 1.3.6.1.4.1.XXXX.1.2.1.1
+              name: cpuIndex
+              tag: true
+
+    [GENERATE YAML NOW]
     """
     
     try:
