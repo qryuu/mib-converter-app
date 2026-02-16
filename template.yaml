@@ -70,10 +70,13 @@ Resources:
           NEW_RELIC_SPAN_EVENTS_ENABLED: "true"
           NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
           NEW_RELIC_AI_MONITORING_ENABLED: "true"
-          
+          NEW_RELIC_APM_LAMBDA_MODE: "true"
           # アプリ用変数
           CACHE_TABLE_NAME: !Ref KentikProfileCache
           GITHUB_SECRET_ID: "prod/github/token"
+      Tags:
+          "NR.Apm.Lambda.Mode": "true"
+          
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref KentikProfileCache
