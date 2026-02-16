@@ -137,32 +137,41 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
     [STRICT OUTPUT RULES]
     1. **Output Structure**: Use the valid Kentik YAML structure.
     2. **Provider**: Set 'provider' to "kentik-{mib_name.lower().replace('mib', '')}".
-    3. **Table grouping (CRITICAL)**:
+    3. **Table grouping**:
        - Group OIDs that share a common prefix into 'table' blocks.
        - The 'table' OID should be the common parent OID.
-       - Inside a 'table', define 'symbols' and 'metric_tags'.
     4. **Symbols vs Tags**:
        - Put NUMERICAL values (Counters, Gauges, Percentages) under 'symbols'.
        - Put STRING values, NAMES, IDs, and INDEXES under 'metric_tags' -> 'column'.
     5. **Descriptions**: Write 'description' in {target_lang}.
     6. **Traps**: Include the traps section exactly as provided.
-    7. **Reference**: Use the provided structure as a SYNTAX GUIDE only.
+    7. **Metrics List Syntax (CRITICAL)**:
+       - The 'metrics' section MUST be a LIST of objects.
+       - EACH table block must start with a new list item: "- MIB: {mib_name}".
+       - DO NOT put multiple 'table' keys under a single list item.
     
-    [REFERENCE SYNTAX EXAMPLE]
+    [REFERENCE SYNTAX EXAMPLE (Follow this indentation strictly)]
     metrics:
       - MIB: {mib_name}
         table:
-          OID: 1.3.6.1.4.1.XXXX.1.2
-          name: someTable
+          OID: 1.3.6.1.4.1.XXXX.1
+          name: firstTable
         symbols:
-          - OID: 1.3.6.1.4.1.XXXX.1.2.1.4
-            name: cpuStatsIdle
+          - OID: 1.3.6.1.4.1.XXXX.1.1.1
+            name: someMetric
             type: gauge
         metric_tags:
           - column:
-              OID: 1.3.6.1.4.1.XXXX.1.2.1.1
-              name: cpuIndex
+              OID: 1.3.6.1.4.1.XXXX.1.1.2
+              name: someTag
               tag: true
+
+      - MIB: {mib_name}  <-- NOTICE: New list item for the next table
+        table:
+          OID: 1.3.6.1.4.1.XXXX.2
+          name: secondTable
+        symbols:
+          ...
 
     Output ONLY the YAML content within code blocks.
     """
@@ -176,17 +185,18 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
         res = bedrock_client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=body)
         raw_text = json.loads(res['body'].read())['content'][0]['text']
 
-        # ▼▼▼ 追加: 正規表現でYAMLブロックの中身だけを抽出 ▼▼▼
+        # ▼▼▼ 追加: 正規表現でMarkdownブロックの中身だけを抽出 ▼▼▼
+        # 1. ```yaml ... ``` の中身を探す
         match = re.search(r'```yaml(.*?)```', raw_text, re.DOTALL)
         if match:
             return match.group(1).strip()
         
-        # yamlタグがない場合も考慮して汎用的なバッククォート検索
+        # 2. 言語指定なしの ``` ... ``` を探す
         match_generic = re.search(r'```(.*?)```', raw_text, re.DOTALL)
         if match_generic:
             return match_generic.group(1).strip()
 
-        # マッチしない場合はそのまま返す（万が一Markdownなしで返ってきた場合用）
+        # 3. マッチしない場合はそのまま返す（余計な文字がない場合）
         return raw_text.strip()
         # ▲▲▲ 追加ここまで ▲▲▲
 
