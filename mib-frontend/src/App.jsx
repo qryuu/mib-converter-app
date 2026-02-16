@@ -30,7 +30,6 @@ const TEXT = {
     alert_error_gen: "生成に失敗しました。",
     select_file_btn: "ファイルを選択",
     no_file_selected: "選択されていません",
-    // ▼ 追加: トグルとプレースホルダー用
     yaml_lang_label: "Pollingの解説(Description)を日本語にする (OFFの場合は英語)",
     trap_placeholder: "空欄の場合、AIが英語で自動生成します"
   },
@@ -60,14 +59,13 @@ const TEXT = {
     alert_error_gen: "Generation failed.",
     select_file_btn: "Choose File",
     no_file_selected: "No file selected",
-    // ▼ Add: Toggle and placeholder
     yaml_lang_label: "Use Japanese for Polling descriptions (Default is English)",
     trap_placeholder: "Leave empty for auto-generated English"
   }
 }
 
 function App() {
-  // ★ APIのエンドポイント
+  // ★ APIのエンドポイント (環境に合わせて変更してください)
   const API_BASE_URL = "https://rzbtaqg1t1.execute-api.ap-northeast-1.amazonaws.com"
 
   // 言語設定 (デフォルト: ja)
@@ -81,26 +79,35 @@ function App() {
   const [traps, setTraps] = useState([])
   const [resultYaml, setResultYaml] = useState('')
   const [downloadUrl, setDownloadUrl] = useState('')
-  const [fileName, setFileName] = useState('')
   
-  // ▼ 追加: YAML内の言語設定フラグ (true=日本語, false=英語)
+  // ファイル名表示用
+  const [fileName, setFileName] = useState('')
+  // ▼ 追加: ファイルの実体(Object)を保持するState
+  const [selectedFile, setSelectedFile] = useState(null)
+
+  // YAML内の言語設定フラグ (true=日本語, false=英語)
   const [isYamlJa, setIsYamlJa] = useState(false)
 
   const fileInputRef = useRef(null)
 
+  // ファイル選択時のハンドラ
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setFileName(e.target.files[0].name)
-    } else {
-      setFileName('')
+      const file = e.target.files[0]
+      setFileName(file.name)
+      // ▼ 追加: ファイル実体をStateに保存
+      setSelectedFile(file)
     }
+    // キャンセル時は前回のファイルを維持するためelse処理は省略
   }
 
   // Step 1: ファイルアップロード & 解析
   const handleUpload = async (event) => {
     event.preventDefault()
     
-    const file = fileInputRef.current?.files?.[0]
+    // ▼ 修正: inputタグ(ref)からではなく、Stateからファイルを取得
+    // これにより「戻る」ボタンで戻った後もファイルデータが維持される
+    const file = selectedFile
     
     if (!file) {
       alert(t.alert_no_file)
@@ -161,7 +168,6 @@ function App() {
         oid: t.oid,
         description: t.user_description // ユーザー入力 (空ならバックエンドで処理)
       })),
-      // ▼ 追加: トグルの状態を送る
       yaml_lang: isYamlJa ? 'ja' : 'en'
     }
 
@@ -218,7 +224,7 @@ function App() {
             <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input 
                 type="file" 
-                required 
+                required={!selectedFile} // ファイル未選択時のみ必須属性をつける
                 accept=".mib,.my,.txt" 
                 ref={fileInputRef} 
                 onChange={handleFileSelect}
@@ -311,7 +317,6 @@ function App() {
 
           <div className="actions" style={{ flexDirection: 'column', gap: '15px' }}>
             
-            {/* ▼ 追加: モダンなトグルスイッチの実装 */}
             <div className="toggle-container">
               <label className="toggle-switch">
                 <input 
