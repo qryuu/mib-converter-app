@@ -4,3 +4,4 @@ pysmi
 pyyaml
 boto3
 apig-wsgi
+requests

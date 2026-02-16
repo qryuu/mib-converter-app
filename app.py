@@ -6,6 +6,8 @@ import boto3
 import traceback
 import sys
 import shutil
+import requests
+import base64
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -31,9 +33,120 @@ if os.path.exists(OUTPUT_FOLDER): shutil.rmtree(OUTPUT_FOLDER)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-# ---------------------------------------------------------
-# 自作クラス: JSON保存用ライター
-# ---------------------------------------------------------
+# AWS Clients
+secrets_client = boto3.client('secretsmanager')
+bedrock_client = boto3.client('bedrock-runtime', region_name='ap-northeast-1')
+
+# --- GitHub Integration Helper ---
+CACHED_GITHUB_TOKEN = None
+
+def get_github_token():
+    """Secrets Managerからトークンを取得してキャッシュ"""
+    global CACHED_GITHUB_TOKEN
+    if CACHED_GITHUB_TOKEN:
+        return CACHED_GITHUB_TOKEN
+    
+    secret_id = os.environ.get('GITHUB_SECRET_ID', 'prod/github/token')
+    try:
+        resp = secrets_client.get_secret_value(SecretId=secret_id)
+        if 'SecretString' in resp:
+            secret = json.loads(resp['SecretString'])
+            token = secret.get('GITHUB_TOKEN')
+            CACHED_GITHUB_TOKEN = token
+            return token
+    except Exception as e:
+        print(f"Secret Error: {e}", file=sys.stderr)
+    return None
+
+def get_kentik_file_list():
+    """GitHub上のKentikプロファイル一覧(.yml)を取得"""
+    token = get_github_token()
+    if not token:
+        print("GitHub Token not available.", file=sys.stderr)
+        return []
+
+    url = "https://api.github.com/repos/kentik/snmp-profiles/git/trees/main?recursive=1"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            tree = resp.json().get('tree', [])
+            file_list = [
+                item['path'] for item in tree 
+                if item['path'].startswith('profiles/kentik_snmp/') and item['path'].endswith('.yml')
+            ]
+            return file_list
+        else:
+            print(f"GitHub API Error: {resp.status_code} {resp.text}", file=sys.stderr)
+    except Exception as e:
+        print(f"GitHub Request Exception: {e}", file=sys.stderr)
+    return []
+
+def get_file_content(path):
+    """指定パスのファイル内容を取得してデコード"""
+    token = get_github_token()
+    url = f"https://api.github.com/repos/kentik/snmp-profiles/contents/{path}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json"
+    }
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = base64.b64decode(data['content']).decode('utf-8')
+            return content
+    except Exception as e:
+        print(f"Content Fetch Error: {e}", file=sys.stderr)
+    return ""
+
+def select_reference_with_ai(mib_name, file_list):
+    """MIB名に最適なファイルをAIに選ばせる"""
+    keywords = mib_name.lower().replace('-', ' ').split()
+    candidates = [f for f in file_list if any(k in f.lower() for k in keywords)]
+    
+    if len(candidates) < 5:
+        candidates = file_list[:50]
+
+    prompt = f"""
+    You are an assistant finding a reference configuration file.
+    User's MIB Name: "{mib_name}"
+    
+    Candidate Files:
+    {json.dumps(candidates)}
+    
+    Select the ONE most relevant file path from the list.
+    If exact match not found, return "profiles/kentik_snmp/cisco/cisco-asa.yml".
+    Return ONLY the file path string.
+    """
+
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 200,
+        "messages": [{"role": "user", "content": prompt}]
+    })
+
+    try:
+        response = bedrock_client.invoke_model(
+            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            body=body
+        )
+        result = json.loads(response['body'].read())
+        selected = result['content'][0]['text'].strip()
+        if any(selected in f for f in file_list):
+            return selected
+    except Exception as e:
+        print(f"AI Selection Error: {e}", file=sys.stderr)
+    
+    return "profiles/kentik_snmp/cisco/cisco-asa.yml"
+
+# --- Existing Logic (MIB Parsing) ---
+
 class CustomJsonWriter:
     def __init__(self, path):
         self._path = path
@@ -58,16 +171,10 @@ class CustomJsonWriter:
                     f.write(data)
                 else:
                     json.dump(data, f, indent=4)
-            print(f"DEBUG: Saved JSON to {file_path}", file=sys.stderr)
         except Exception as e:
             print(f"DEBUG: Failed to save JSON {file_path}: {e}", file=sys.stderr)
             raise e
         return mibName
-
-# ---------------------------------------------------------
-# ロジック関数 (変更なし)
-# ---------------------------------------------------------
-# (省略: parse_mib_to_json, extract_oid_info, get_ai_descriptions, generate_profile_yaml はそのまま)
 
 def parse_mib_to_json(mib_path, output_dir):
     try:
@@ -75,17 +182,10 @@ def parse_mib_to_json(mib_path, output_dir):
         mib_filename = os.path.basename(mib_path)
         assumed_mib_name = os.path.splitext(mib_filename)[0]
 
-        print(f"DEBUG: Starting compilation for {mib_filename}", file=sys.stderr)
-
-        # パーサーの設定
         mibParser = SmiStarParser()
-        
-        # 自作のJSONライターを使用
         mibWriter = CustomJsonWriter(output_dir)
-        
         mibCompiler = MibCompiler(mibParser, JsonCodeGen(), mibWriter)
         
-        # 依存関係解決のためにWebソースを追加
         web_reader = HttpReader('https://mibs.pysnmp.com/asn1/')
         file_reader = FileReader(mib_dir)
 
@@ -94,16 +194,13 @@ def parse_mib_to_json(mib_path, output_dir):
         else:
             mibCompiler.addSources(file_reader, web_reader)
 
-        # コンパイル実行
         mibCompiler.compile(assumed_mib_name)
 
-        # 生成されたファイルを賢く探す
         expected_json = os.path.join(output_dir, assumed_mib_name + '.json')
         if os.path.exists(expected_json):
             return expected_json, assumed_mib_name
         
         json_files = [f for f in os.listdir(output_dir) if f.endswith('.json')]
-        
         target_json = None
         standard_mibs = ['SNMPv2-SMI', 'RFC1213-MIB', 'SNMPv2-TC', 'RFC-1212', 'RFC-1215', 'RFC1155-SMI', 'SNMPv2-CONF']
         
@@ -114,14 +211,11 @@ def parse_mib_to_json(mib_path, output_dir):
                 break
         
         if target_json:
-            print(f"DEBUG: Found target JSON file: {target_json}", file=sys.stderr)
             return os.path.join(output_dir, target_json), os.path.splitext(target_json)[0]
         
         if json_files:
-            print(f"DEBUG: Fallback to first JSON file: {json_files[0]}", file=sys.stderr)
             return os.path.join(output_dir, json_files[0]), os.path.splitext(json_files[0])[0]
 
-        print(f"Error: No JSON file created. Files in output: {os.listdir(output_dir)}", file=sys.stderr)
         return None, None
 
     except Exception as e:
@@ -133,7 +227,6 @@ def extract_oid_info(json_path):
     try:
         with open(json_path, 'r') as f:
             data = json.load(f)
-        
         if isinstance(data, str):
             data = json.loads(data)
             
@@ -162,17 +255,14 @@ def extract_oid_info(json_path):
                         'nodetype': nodetype,
                         'description': description
                     })
-
         return metrics, traps
     except Exception as e:
         print(f"Extract OID Error: {e}", file=sys.stderr)
-        traceback.print_exc()
         return [], []
 
 def get_ai_descriptions(symbol_list, lang='ja'):
     if not symbol_list: return {}
     try:
-        bedrock = boto3.client(service_name='bedrock-runtime', region_name='ap-northeast-1')
         target_symbols = symbol_list[:30]
         symbols_str = "\n".join(target_symbols)
         lang_instruction = "Japanese" if lang == 'ja' else "English"
@@ -192,7 +282,7 @@ def get_ai_descriptions(symbol_list, lang='ja'):
             "messages": [{"role": "user", "content": prompt}]
         })
 
-        response = bedrock.invoke_model(
+        response = bedrock_client.invoke_model(
             modelId='anthropic.claude-3-haiku-20240307-v1:0',
             body=body
         )
@@ -208,29 +298,45 @@ def get_ai_descriptions(symbol_list, lang='ja'):
         print(f"AI Error: {e}", file=sys.stderr)
         return {}
 
-def generate_profile_yaml(mib_name, metrics_data, traps_data):
-    profile = {
-        'extends': [],
-        'sysobjectid': '1.3.6.1.4.1.CHANGE_THIS',
-        'metrics': [],
-        'traps': []
-    }
-    for m in metrics_data:
-        profile['metrics'].append({
-            'MIB': mib_name,
-            'symbol': {'OID': m['oid'], 'name': m['name']}
-        })
-    for t in traps_data:
-        profile['traps'].append({
-            'MIB': mib_name,
-            'symbol': {'OID': t['oid'], 'name': t['name']},
-            'description': t.get('description', '')
-        })
-    return profile
+def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content):
+    """
+    お手本を参考に、Bedrockを使ってYAMLを生成する
+    """
+    prompt = f"""
+    You are an expert in Kentik SNMP Profiles.
+    Create a valid YAML profile for the MIB "{mib_name}".
+    
+    [REFERENCE STYLE - FOLLOW THIS STRUCTURE]
+    {reference_content[:4000]} 
+    (NOTE: Do not copy the OIDs from the reference. Mimic the structure: 'table' grouping logic, 'symbols' vs 'metric_tags'.)
 
-# ---------------------------------------------------------
-# API エンドポイント
-# ---------------------------------------------------------
+    [USER REQUIREMENTS]
+    Metrics: {json.dumps(metrics, indent=2)}
+    Traps: {json.dumps(traps, indent=2)}
+    
+    [OUTPUT INSTRUCTIONS]
+    1. Output ONLY valid YAML. No markdown blocks.
+    2. Group metrics sharing the same OID prefix into 'table' blocks.
+    3. Use 'symbols' for numeric values, 'metric_tags' for string values.
+    """
+
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 4000,
+        "messages": [{"role": "user", "content": prompt}]
+    })
+
+    try:
+        response = bedrock_client.invoke_model(
+            modelId="anthropic.claude-3-haiku-20240307-v1:0",
+            body=body
+        )
+        return json.loads(response['body'].read())['content'][0]['text']
+    except Exception as e:
+        print(f"YAML Gen Error: {e}", file=sys.stderr)
+        return f"# Error generating YAML: {str(e)}"
+
+# --- API Endpoints ---
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -258,7 +364,6 @@ def parse():
             if json_path and os.path.exists(json_path):
                 metrics_raw, traps_raw = extract_oid_info(json_path)
                 
-                # MetricsがあればAI解説を試みる
                 metrics_list = []
                 if metrics_raw:
                     symbols = [m['name'] for m in metrics_raw]
@@ -269,7 +374,6 @@ def parse():
                         m['importance'] = ai_info.get('importance', '-')
                         metrics_list.append(m)
                 
-                # Traps
                 traps_list = []
                 for t in traps_raw:
                     t['user_description'] = t['description']
@@ -282,12 +386,12 @@ def parse():
                     "traps": traps_list
                 })
             else:
-                return jsonify({"error": "Failed to parse MIB file. Check CloudWatch logs for details."}), 500
+                return jsonify({"error": "Failed to parse MIB file."}), 500
 
     except Exception as e:
         print(f"Exception in /parse: {e}", file=sys.stderr)
         traceback.print_exc()
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -297,12 +401,26 @@ def generate():
             return jsonify({"error": "No data provided"}), 400
 
         mib_name = data.get('mib_name', 'Unknown_MIB')
-        selected_metrics = data.get('metrics', [])
-        selected_traps = data.get('traps', [])
+        metrics = data.get('metrics', [])
+        traps = data.get('traps', [])
 
-        profile_data = generate_profile_yaml(mib_name, selected_metrics, selected_traps)
-        yaml_content = yaml.dump(profile_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+        # 1. GitHubからファイル一覧を取得
+        all_files = get_kentik_file_list()
+        
+        # 2. AIにお手本を選ばせる
+        ref_path = "None"
+        ref_content = ""
+        
+        if all_files:
+            ref_path = select_reference_with_ai(mib_name, all_files)
+            print(f"Selected Reference: {ref_path}", file=sys.stderr)
+            # 3. お手本を取得
+            ref_content = get_file_content(ref_path)
+        
+        # 4. 生成実行 (お手本ありAI生成)
+        yaml_content = generate_profile_yaml_with_ai(mib_name, metrics, traps, ref_content)
 
+        # ファイル保存
         output_filename = f"{mib_name}_profile.yaml"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
         with open(output_path, 'w') as f:
@@ -311,8 +429,10 @@ def generate():
         return jsonify({
             "status": "success",
             "download_url": f"/download/{output_filename}",
-            "yaml_preview": yaml_content
+            "yaml_preview": yaml_content,
+            "reference_used": ref_path
         })
+
     except Exception as e:
         print(f"Exception in /generate: {e}", file=sys.stderr)
         return jsonify({"error": str(e)}), 500
@@ -320,10 +440,6 @@ def generate():
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_file(os.path.join(OUTPUT_FOLDER, filename), as_attachment=True)
-
-# ---------------------------------------------------------
-# Lambda Handler (New Relic Lambda Extension 対応版)
-# ---------------------------------------------------------
 
 wsgi_handler = make_lambda_handler(app)
 
