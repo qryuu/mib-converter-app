@@ -1,91 +1,78 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: MIB Converter App
+Description: MIB Converter App with Background Sync
 
-# ▼▼▼ deploy.yml から値を受け取るための設定 ▼▼▼
 Parameters:
-  NewRelicAccountId:
-    Type: String
-  NewRelicLicenseKey:
-    Type: String
+  NewRelicAccountId: { Type: String }
+  NewRelicLicenseKey: { Type: String }
 
 Resources:
-  # S3 Bucket for MIB files
-  MibBucket:
-    Type: AWS::S3::Bucket
+  # 1. コンテンツ格納用テーブル
+  KentikProfileCache:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KentikProfileCache
+      AttributeDefinitions:
+        - AttributeName: path
+          AttributeType: S
+      KeySchema:
+        - AttributeName: path
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
 
-  # Lambda Function
+  # 2. 定期同期用 Lambda (1時間ごとに数件ずつ更新)
+  SyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: sync.lambda_handler
+      Runtime: python3.12
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          GITHUB_SECRET_ID: "prod/github/token"
+          CACHE_TABLE_NAME: !Ref KentikProfileCache
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref KentikProfileCache
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/github/token-*"
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(1 hour)" # 1時間ごとに実行
+
+  # 3. メインの Flask Lambda
   FlaskFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
-      # ▼ New Relic のラッパーをハンドラーに指定 (重要)
       Handler: newrelic_lambda_wrapper.handler
       Runtime: python3.12
       Timeout: 180
-      # ▼ Late Payload (送信遅れ) を防ぐため 1024MB に増強
       MemorySize: 2048
-      Architectures: [x86_64]
-      
-      # ▼ New Relic Layer (Tokyo Region Python 3.12)
       Layers:
         - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython312:58
-
       Environment:
         Variables:
-          # ▼ アプリケーションの本当のハンドラー
           NEW_RELIC_LAMBDA_HANDLER: app.lambda_handler
-          
-          # ▼ パラメータから受け取った機密情報
           NEW_RELIC_ACCOUNT_ID: !Ref NewRelicAccountId
           NEW_RELIC_LICENSE_KEY: !Ref NewRelicLicenseKey
-          
-          # ▼ 基本設定
           NEW_RELIC_APP_NAME: "MIB-Converter-Lambda"
-          NEW_RELIC_NO_CONFIG_FILE: "true"
-          NEW_RELIC_TRUSTED_ACCOUNT_ID: !Ref NewRelicAccountId # あなたのアカウントID
-          NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
-          NEW_RELIC_SPAN_EVENTS_ENABLED: "true"
-          # ▼ ログ転送とデバッグ設定 (動作確認のため一時的に debug にします)
-          NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
-          NEW_RELIC_EXTENSION_SEND_EXTENSION_LOGS: "true"
-          NEW_RELIC_EXTENSION_LOG_LEVEL: "INFO"
-          NEW_RELIC_LOG_LEVEL: "info"
-          
-          # ▼ AIモニタリング (Bedrock) 設定
-          NEW_RELIC_AI_MONITORING_ENABLED: "true"
-          NEW_RELIC_AIM_ENABLED: "true"
-          NEW_RELIC_CUSTOM_ATTRIBUTES_ENABLED: "true"
-          NEW_RELIC_AIM_DATA_DROPPING_DISABLED: "true"
-          NEW_RELIC_LAMBDA_EXTENSION_ENABLED: "true"
-          NEW_RELIC_SERVERLESS_MODE_ENABLED: "false"
-
-          # ▼ アプリがS3を使うための設定 
-          bucket_name: !Ref MibBucket
-
-          # ▼▼▼ 追加: GitHub連携用 ▼▼▼
           GITHUB_SECRET_ID: "prod/github/token"
-
+          CACHE_TABLE_NAME: !Ref KentikProfileCache
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref MibBucket
+        - DynamoDBReadPolicy: # アプリは読み取りのみ
+            TableName: !Ref KentikProfileCache
         - Statement:
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: "*"
-        
-        # ▼▼▼ 追加: Secrets Manager読み取り権限 ▼▼▼
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/github/token-*"
-
       Events:
         HttpApi:
           Type: HttpApi
           Properties:
             Path: /{proxy+}
             Method: any
-
-Outputs:
-  ApiUrl:
-    Description: "API Endpoint"
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
