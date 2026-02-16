@@ -18,9 +18,78 @@ th { background: #f8f9fa; }
 .hint { font-size: 0.9em; color: #666; }
 
 .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
-.spinner { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; }
+.spinner { border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
+
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-.badge { padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
-.badge.high { background: #ffe6e6; color: #dc3545; }
-.badge.low { background: #e9ecef; color: #6c757d; }
+.lang-switch button { background: none; border: 1px solid #ccc; padding: 5px 10px; cursor: pointer; margin-left: 5px; border-radius: 4px; }
+.lang-switch button.active { background: #007bff; color: white; border-color: #007bff; }
+
+.badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8em; color: white; }
+.badge.high { background-color: #dc3545; }
+.badge.low { background-color: #6c757d; }
+
+.actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+
+/* --- トグルスイッチ (Toggle Switch) --- */
+.toggle-container {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .3s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+  background-color: #007bff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+.toggle-label {
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.95rem;
+  color: #333;
+}

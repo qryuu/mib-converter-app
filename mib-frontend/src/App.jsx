@@ -30,7 +30,7 @@ const TEXT = {
     alert_error_gen: "生成に失敗しました。",
     select_file_btn: "ファイルを選択",
     no_file_selected: "選択されていません",
-    // ▼ 追加: YAML言語設定とプレースホルダー
+    // ▼ 追加: トグルとプレースホルダー用
     yaml_lang_label: "Pollingの解説(Description)を日本語にする (OFFの場合は英語)",
     trap_placeholder: "空欄の場合、AIが英語で自動生成します"
   },
@@ -60,14 +60,14 @@ const TEXT = {
     alert_error_gen: "Generation failed.",
     select_file_btn: "Choose File",
     no_file_selected: "No file selected",
-    // ▼ Add: YAML Language settings and placeholder
+    // ▼ Add: Toggle and placeholder
     yaml_lang_label: "Use Japanese for Polling descriptions (Default is English)",
     trap_placeholder: "Leave empty for auto-generated English"
   }
 }
 
 function App() {
-  // ★ APIのエンドポイント (必要に応じて書き換えてください)
+  // ★ APIのエンドポイント
   const API_BASE_URL = "https://rzbtaqg1t1.execute-api.ap-northeast-1.amazonaws.com"
 
   // 言語設定 (デフォルト: ja)
@@ -159,9 +159,9 @@ function App() {
       traps: traps.filter(t => t.checked).map(t => ({
         name: t.name,
         oid: t.oid,
-        description: t.user_description // ユーザー入力を送信（空ならバックエンドが処理）
+        description: t.user_description // ユーザー入力 (空ならバックエンドで処理)
       })),
-      // ▼ 追加: YAML言語フラグを送信
+      // ▼ 追加: トグルの状態を送る
       yaml_lang: isYamlJa ? 'ja' : 'en'
     }
 
@@ -295,7 +295,6 @@ function App() {
                       <td>{t.name}</td>
                       <td>{t.oid}</td>
                       <td>
-                        {/* ▼ 修正: プレースホルダーにAI自動生成の注記を追加 */}
                         <textarea 
                           className="trap-input"
                           value={t.user_description || ''} 
@@ -311,18 +310,20 @@ function App() {
           </div>
 
           <div className="actions" style={{ flexDirection: 'column', gap: '15px' }}>
-            {/* ▼ 追加: YAML言語設定チェックボックス */}
-            <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input 
-                type="checkbox" 
-                id="yamlLangToggle" 
-                checked={isYamlJa} 
-                onChange={(e) => setIsYamlJa(e.target.checked)} 
-                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-              />
-              <label htmlFor="yamlLangToggle" style={{ cursor: 'pointer', userSelect: 'none' }}>
-                {t.yaml_lang_label}
+            
+            {/* ▼ 追加: モダンなトグルスイッチの実装 */}
+            <div className="toggle-container">
+              <label className="toggle-switch">
+                <input 
+                  type="checkbox" 
+                  checked={isYamlJa} 
+                  onChange={(e) => setIsYamlJa(e.target.checked)} 
+                />
+                <span className="slider"></span>
               </label>
+              <span className="toggle-label" onClick={() => setIsYamlJa(!isYamlJa)}>
+                {t.yaml_lang_label}
+              </span>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', width: '100%', justifyContent: 'flex-end' }}>
