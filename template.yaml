@@ -1,13 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: MIB Converter App with Background Sync
+Description: MIB Converter App with New Relic and Background Sync
 
 Parameters:
-  NewRelicAccountId: { Type: String }
-  NewRelicLicenseKey: { Type: String }
+  NewRelicAccountId:
+    Type: String
+  NewRelicLicenseKey:
+    Type: String
 
 Resources:
-  # 1. コンテンツ格納用テーブル
+  # 1. コンテンツキャッシュ用 DynamoDB
   KentikProfileCache:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -20,7 +22,7 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  # 2. 定期同期用 Lambda (1時間ごとに数件ずつ更新)
+  # 2. 定期同期用 Lambda (New Relic 設定なしでシンプルに構成)
   SyncFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -42,17 +44,18 @@ Resources:
         ScheduleEvent:
           Type: Schedule
           Properties:
-            Schedule: "rate(1 hour)" # 1時間ごとに実行
+            Schedule: "rate(1 hour)"
 
-  # 3. メインの Flask Lambda
+  # 3. メインアプリ (New Relic 監視を維持)
   FlaskFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
-      Handler: newrelic_lambda_wrapper.handler
+      Handler: newrelic_lambda_wrapper.handler # New Relic ラッパーを維持
       Runtime: python3.12
       Timeout: 180
       MemorySize: 2048
+      Architectures: [x86_64]
       Layers:
         - arn:aws:lambda:ap-northeast-1:451483290750:layer:NewRelicPython312:58
       Environment:
@@ -61,10 +64,18 @@ Resources:
           NEW_RELIC_ACCOUNT_ID: !Ref NewRelicAccountId
           NEW_RELIC_LICENSE_KEY: !Ref NewRelicLicenseKey
           NEW_RELIC_APP_NAME: "MIB-Converter-Lambda"
-          GITHUB_SECRET_ID: "prod/github/token"
+          NEW_RELIC_NO_CONFIG_FILE: "true"
+          NEW_RELIC_TRUSTED_ACCOUNT_ID: !Ref NewRelicAccountId
+          NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+          NEW_RELIC_SPAN_EVENTS_ENABLED: "true"
+          NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: "true"
+          NEW_RELIC_AI_MONITORING_ENABLED: "true"
+          
+          # アプリ用変数
           CACHE_TABLE_NAME: !Ref KentikProfileCache
+          GITHUB_SECRET_ID: "prod/github/token"
       Policies:
-        - DynamoDBReadPolicy: # アプリは読み取りのみ
+        - DynamoDBReadPolicy:
             TableName: !Ref KentikProfileCache
         - Statement:
             - Effect: Allow

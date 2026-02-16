@@ -17,7 +17,7 @@ const TEXT = {
     table_oid: "OID",
     table_desc: "AI解説 / 重要度",
     traps_section: "Traps (コメント編集可)",
-    traps_hint: "Trapの通知メッセージ(Description)を自由に編集できます。",
+    traps_hint: "Trapの通知メッセージを編集できます。空欄のままにするとAIが英語で自動生成します。",
     table_desc_edit: "Description (編集可能)",
     back_btn: "戻る",
     generate_btn: "YAMLを生成",
@@ -28,9 +28,11 @@ const TEXT = {
     alert_no_file: "ファイルを選択してください",
     alert_error_parse: "解析に失敗しました。ファイルが正しいか確認してください。",
     alert_error_gen: "生成に失敗しました。",
-    // ▼ 追加: ファイル選択周り
     select_file_btn: "ファイルを選択",
-    no_file_selected: "選択されていません"
+    no_file_selected: "選択されていません",
+    // ▼ 追加: YAML言語設定とプレースホルダー
+    yaml_lang_label: "Pollingの解説(Description)を日本語にする (OFFの場合は英語)",
+    trap_placeholder: "空欄の場合、AIが英語で自動生成します"
   },
   en: {
     title: "MIB to KTranslate Converter",
@@ -45,7 +47,7 @@ const TEXT = {
     table_oid: "OID",
     table_desc: "AI Desc / Importance",
     traps_section: "Traps (Editable Description)",
-    traps_hint: "You can edit the Trap notification message (Description).",
+    traps_hint: "You can edit the Trap message. If left empty, AI will auto-generate it in English.",
     table_desc_edit: "Description (Editable)",
     back_btn: "Back",
     generate_btn: "Generate YAML",
@@ -56,14 +58,16 @@ const TEXT = {
     alert_no_file: "Please select a file.",
     alert_error_parse: "Analysis failed. Please check if the file is valid.",
     alert_error_gen: "Generation failed.",
-    // ▼ Add: File selection
     select_file_btn: "Choose File",
-    no_file_selected: "No file selected"
+    no_file_selected: "No file selected",
+    // ▼ Add: YAML Language settings and placeholder
+    yaml_lang_label: "Use Japanese for Polling descriptions (Default is English)",
+    trap_placeholder: "Leave empty for auto-generated English"
   }
 }
 
 function App() {
-  // ★ APIのエンドポイント
+  // ★ APIのエンドポイント (必要に応じて書き換えてください)
   const API_BASE_URL = "https://rzbtaqg1t1.execute-api.ap-northeast-1.amazonaws.com"
 
   // 言語設定 (デフォルト: ja)
@@ -77,13 +81,13 @@ function App() {
   const [traps, setTraps] = useState([])
   const [resultYaml, setResultYaml] = useState('')
   const [downloadUrl, setDownloadUrl] = useState('')
-  
-  // ▼ 追加: ファイル名表示用
   const [fileName, setFileName] = useState('')
+  
+  // ▼ 追加: YAML内の言語設定フラグ (true=日本語, false=英語)
+  const [isYamlJa, setIsYamlJa] = useState(false)
 
   const fileInputRef = useRef(null)
 
-  // ▼ ファイル選択時のハンドラ (表示用)
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files[0]) {
       setFileName(e.target.files[0].name)
@@ -155,8 +159,10 @@ function App() {
       traps: traps.filter(t => t.checked).map(t => ({
         name: t.name,
         oid: t.oid,
-        description: t.user_description
-      }))
+        description: t.user_description // ユーザー入力を送信（空ならバックエンドが処理）
+      })),
+      // ▼ 追加: YAML言語フラグを送信
+      yaml_lang: isYamlJa ? 'ja' : 'en'
     }
 
     try {
@@ -180,7 +186,6 @@ function App() {
           <p>{t.subtitle}</p>
         </div>
         
-        {/* 言語切り替えスイッチ */}
         <div className="lang-switch">
           <button 
             className={lang === 'ja' ? 'active' : ''} 
@@ -210,19 +215,15 @@ function App() {
         <div className="card">
           <h2>{t.step1_title}</h2>
           <form onSubmit={handleUpload}>
-            
-            {/* ▼▼▼ 修正: カスタムファイル選択ボタン ▼▼▼ */}
             <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {/* 本物のinputは隠す */}
               <input 
                 type="file" 
                 required 
                 accept=".mib,.my,.txt" 
                 ref={fileInputRef} 
-                onChange={handleFileSelect} // 変更時にファイル名を取得
+                onChange={handleFileSelect}
                 style={{ display: 'none' }} 
               />
-              {/* カスタムボタン */}
               <button 
                 type="button" 
                 className="secondary-btn" 
@@ -230,13 +231,10 @@ function App() {
               >
                 {t.select_file_btn}
               </button>
-              {/* ファイル名表示 */}
               <span style={{ color: '#666' }}>
                 {fileName || t.no_file_selected}
               </span>
             </div>
-            {/* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */}
-
             <button type="submit" className="primary-btn">{t.analyze_btn}</button>
           </form>
         </div>
@@ -297,10 +295,12 @@ function App() {
                       <td>{t.name}</td>
                       <td>{t.oid}</td>
                       <td>
+                        {/* ▼ 修正: プレースホルダーにAI自動生成の注記を追加 */}
                         <textarea 
                           className="trap-input"
-                          value={t.user_description} 
+                          value={t.user_description || ''} 
                           onChange={(e) => handleTrapDescChange(i, e.target.value)}
+                          placeholder={t.trap_placeholder}
                         />
                       </td>
                     </tr>
@@ -310,9 +310,25 @@ function App() {
             </div>
           </div>
 
-          <div className="actions">
-            <button onClick={() => setStep(1)} className="secondary-btn">{t.back_btn}</button>
-            <button onClick={handleGenerate} className="primary-btn">{t.generate_btn}</button>
+          <div className="actions" style={{ flexDirection: 'column', gap: '15px' }}>
+            {/* ▼ 追加: YAML言語設定チェックボックス */}
+            <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                type="checkbox" 
+                id="yamlLangToggle" 
+                checked={isYamlJa} 
+                onChange={(e) => setIsYamlJa(e.target.checked)} 
+                style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+              />
+              <label htmlFor="yamlLangToggle" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                {t.yaml_lang_label}
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', width: '100%', justifyContent: 'flex-end' }}>
+              <button onClick={() => setStep(1)} className="secondary-btn">{t.back_btn}</button>
+              <button onClick={handleGenerate} className="primary-btn">{t.generate_btn}</button>
+            </div>
           </div>
         </div>
       )}

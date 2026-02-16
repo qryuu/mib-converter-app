@@ -25,12 +25,11 @@ def lambda_handler(event, context):
                  if i['path'].startswith('profiles/kentik_snmp/') and i['path'].endswith('.yml')]
 
     # 2. DynamoDBをスキャンして、同期済みのパスを確認
-    # (小規模なうちは全件スキャン、数千件超えるならインデックス設計を推奨)
     existing_items = table.scan(ProjectionExpression="#p", ExpressionAttributeNames={"#p": "path"})['Items']
     synced_paths = {item['path'] for item in existing_items}
 
-    # 3. 未同期、または古いファイルを特定 (今回はシンプルに未同期分を優先)
-    to_sync = [p for p in all_files if p not in synced_paths][:20] # 1回20件に制限
+    # 3. 未同期のファイルを特定し、1回につき20件だけ更新
+    to_sync = [p for p in all_files if p not in synced_paths][:20]
     
     print(f"Syncing {len(to_sync)} files to DynamoDB...")
 
