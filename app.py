@@ -182,7 +182,7 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
             "max_tokens": 4000, 
             "messages": [{"role": "user", "content": prompt}]
         })
-        res = bedrock_client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=body)
+        res = bedrock_client.invoke_model(modelId="anthropic.claude-3-5-haiku-20241022-v1:0", body=body)
         raw_text = json.loads(res['body'].read())['content'][0]['text']
 
         # ▼▼▼ 追加: 正規表現でMarkdownブロックの中身だけを抽出 ▼▼▼
