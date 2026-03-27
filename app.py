@@ -139,7 +139,7 @@ def get_ai_descriptions(symbol_list, lang='ja'):
         })
         
         # Bedrock Claude 4.5 Haiku の呼び出し [cite: 3, 8]
-        res = bedrock_client.invoke_model(modelId='apac.anthropic.claude-haiku-4-5-20251001-v1:0', body=body)
+        res = bedrock_client.invoke_model(modelId='jp.anthropic.claude-haiku-4-5-20251001-v1:0', body=body)
         raw_text = json.loads(res.get('body').read())['content'][0]['text']
         
         # 3. JSONパースの堅牢化 [cite: 29, 30]
@@ -228,7 +228,7 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
             "max_tokens": 4000, 
             "messages": [{"role": "user", "content": prompt}]
         })
-        res = bedrock_client.invoke_model(modelId="apac.anthropic.claude-haiku-4-5-20251001-v1:0", body=body)
+        res = bedrock_client.invoke_model(modelId="jp.anthropic.claude-haiku-4-5-20251001-v1:0", body=body)
         raw_text = json.loads(res['body'].read())['content'][0]['text']
 
         # ▼▼▼ 追加: 正規表現でMarkdownブロックの中身だけを抽出 ▼▼▼
