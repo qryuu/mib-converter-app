@@ -114,12 +114,58 @@ def get_ai_descriptions(symbol_list, lang='ja'):
     if not symbol_list: return {}
     try:
         lang_str = "Japanese" if lang == 'ja' else "English"
-        prompt = f"Explain these SNMP OIDs in {lang_str}. Return ONLY JSON: {{'name': {{'desc': '...', 'importance': 'High'}}}}\nSymbols: {', '.join(symbol_list[:30])}"
-        body = json.dumps({"anthropic_version": "bedrock-2023-05-31", "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]})
-        res = bedrock_client.invoke_model(modelId='anthropic.claude-3-haiku-20240307-v1:0', body=body)
-        text = json.loads(res.get('body').read())['content'][0]['text']
-        return json.loads(text[text.find('{'):text.rfind('}')+1])
-    except: return {}
+        # 1. 抽出数を30から100に拡張（29秒タイムアウトの安全圏） 
+        target_symbols = symbol_list[:100]
+        
+        # 2. 文字数制限の反映（max 60 characters） [cite: 17]
+        prompt = f"""
+        Explain these SNMP OIDs in {lang_str}.
+        Return ONLY a JSON object.
+
+        [RULES]
+        1. "desc" must be concise but descriptive enough (max 60 characters).
+        2. "importance" must be "High", "Medium", or "Low".
+        3. If an item looks like a branch node or company name, set importance to "Low".
+
+        Format: {{"name": {{"desc": "...", "importance": "High"}}}}
+        Symbols: {', '.join(target_symbols)}
+        """
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31", 
+            # トークン上限を2000から4000に拡張
+            "max_tokens": 4000, 
+            "messages": [{"role": "user", "content": prompt}]
+        })
+        
+        # Bedrock Claude 4.5 Haiku の呼び出し [cite: 3, 8]
+        res = bedrock_client.invoke_model(modelId='apac.anthropic.claude-haiku-4-5-20251001-v1:0', body=body)
+        raw_text = json.loads(res.get('body').read())['content'][0]['text']
+        
+        # 3. JSONパースの堅牢化 [cite: 29, 30]
+        match = re.search(r'```json(.*?)```', raw_text, re.DOTALL | re.IGNORECASE)
+        if match:
+            json_str = match.group(1).strip()
+        else:
+            match_generic = re.search(r'```(.*?)```', raw_text, re.DOTALL)
+            if match_generic:
+                json_str = match_generic.group(1).strip()
+            else:
+                json_str = raw_text.strip()
+
+        # LLMの出力が途切れたり、前後に余分なテキストが含まれている場合への対策
+        start_idx = json_str.find('{')
+        end_idx = json_str.rfind('}')
+        if start_idx != -1 and end_idx != -1:
+            json_str = json_str[start_idx:end_idx+1]
+            return json.loads(json_str)
+        else:
+            print("Warning: No valid JSON object found in AI response.", file=sys.stderr)
+            return {}
+
+    except Exception as e:
+        print(f"AI Description Error: {traceback.format_exc()}", file=sys.stderr)
+        return {}
 
 # --- YAML Generation ---
 
@@ -182,7 +228,7 @@ def generate_profile_yaml_with_ai(mib_name, metrics, traps, reference_content, y
             "max_tokens": 4000, 
             "messages": [{"role": "user", "content": prompt}]
         })
-        res = bedrock_client.invoke_model(modelId="anthropic.claude-haiku-4-5-20251001-v1:0", body=body)
+        res = bedrock_client.invoke_model(modelId="apac.anthropic.claude-haiku-4-5-20251001-v1:0", body=body)
         raw_text = json.loads(res['body'].read())['content'][0]['text']
 
         # ▼▼▼ 追加: 正規表現でMarkdownブロックの中身だけを抽出 ▼▼▼
