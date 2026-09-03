@@ -4,10 +4,11 @@
 __pycache__/
 *.py[cod]
 
-# Virtual Environment
+# Virtual Environment & Dependencies
 venv/
 env/
 .env
+node_modules/
 
 # AWS & Secrets (絶対にアップロードしない！)
 aws_credentials
