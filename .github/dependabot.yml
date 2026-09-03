@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # フロントエンド (mib-frontend) の npm 依存関係
+  - package-ecosystem: "npm"
+    directory: "/mib-frontend"
+    schedule:
+      interval: "weekly"
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+
+  # ルートディレクトリの npm 依存関係
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      root-npm-dependencies:
+        patterns:
+          - "*"
+
+  # バックエンド (Python / requirements.txt) の依存関係
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      backend-dependencies:
+        patterns:
+          - "*"
+
+  # GitHub Actions の依存関係
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-dependencies:
+        patterns:
+          - "*"
