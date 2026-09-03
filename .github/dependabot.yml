@@ -7,6 +7,11 @@ updates:
       interval: "weekly"
     groups:
       frontend-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      frontend-security:
+        applies-to: security-updates
         patterns:
           - "*"
 
@@ -17,6 +22,11 @@ updates:
       interval: "weekly"
     groups:
       root-npm-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      root-security:
+        applies-to: security-updates
         patterns:
           - "*"
 
@@ -27,6 +37,11 @@ updates:
       interval: "weekly"
     groups:
       backend-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      backend-security:
+        applies-to: security-updates
         patterns:
           - "*"
 
@@ -37,5 +52,6 @@ updates:
       interval: "weekly"
     groups:
       actions-dependencies:
+        applies-to: version-updates
         patterns:
           - "*"
